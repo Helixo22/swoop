@@ -8,6 +8,17 @@ interface, a CLI, browser integration and the lifecycle management of the aria2 
 
 **Status:** early development.
 
+## Usage
+
+```sh
+swoop                         # start Swoop (aria2 runs in the background)
+swoop add <url> [--dir DIR] [--out NAME]
+swoop quit
+swoop install-browser-host    # register the native messaging host for Firefox/Chromium
+```
+
+Commands sent while Swoop is running are forwarded to the running instance over D-Bus.
+
 ## Development
 
 ```sh

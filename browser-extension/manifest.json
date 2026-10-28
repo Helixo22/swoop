@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Swoop",
+  "version": "0.1.0",
+  "description": "Hand browser downloads over to the Swoop download manager.",
+  "permissions": ["downloads", "nativeMessaging", "contextMenus"],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["background.js"]
+  },
+  "icons": {
+    "16": "icons/swoop-16.png",
+    "48": "icons/swoop-48.png",
+    "128": "icons/swoop-128.png"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "swoop@swoop.github.io",
+      "strict_min_version": "121.0"
+    }
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwL+Wan4MZRaKwTBuuykrwSUV7qyp1vrkmPsvqhwHPFivcIUfp7wtbOo72ULWN+XtH5GI8GmBNyIDdKwabxM1VWvsXEMmWGFgM/67+GX2WeqqvG8Y6k7ojdJ6nWSBm7AB5UEHw0fKUhZVWHUahLgqFcPSAE8eTKst25NVS+0trOJdyt+o02a46QGHZcOEppMuYSp+eWFhXvvOgYtAjPybqQASiekLXWoWtnJ9ZKF5HQ0p4+MlRXy/vUSRhDlRMSiN7Gktz1Le9UFpl9LjouoyWNRU6xyDwzLNcsaNKv8ZfLHzpkZUvOoWMSpLUFAxI9Wh4bZ1MZYDbAJFscOyVMGakwIDAQAB"
+}
