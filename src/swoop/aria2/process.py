@@ -63,7 +63,7 @@ class Aria2Settings:
     download_dir: Path
     session_file: Path
     executable: str = "aria2c"
-    connections_per_download: int = 8
+    connections_per_download: int = 16  # aria2's maximum; helps servers that throttle each one
     limits: QueueLimits = field(default_factory=QueueLimits)
     startup_timeout: float = 10.0
     shutdown_timeout: float = 10.0
@@ -89,6 +89,14 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
         f"--split={settings.connections_per_download}",
         f"--max-connection-per-server={settings.connections_per_download}",
         "--min-split-size=1M",
+        # Reserve space instantly (ext4, btrfs, xfs) instead of writing zeros first,
+        # which kept large downloads from starting for minutes.
+        "--file-allocation=falloc",
+        "--disk-cache=64M",
+        "--connect-timeout=10",
+        "--timeout=30",
+        "--max-tries=5",
+        "--retry-wait=2",
         "--continue=true",
         "--bt-save-metadata=true",  # magnets resume from the session without refetching
         *(f"--{name}={value}" for name, value in settings.limits.as_options().items()),

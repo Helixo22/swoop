@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import struct
 import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, BinaryIO
 
 from swoop.validation import (
@@ -93,26 +95,31 @@ def parse_download(message: Any) -> LaunchRequest:
 
 def launch_swoop(request: LaunchRequest) -> Reply:
     """Run "swoop add"; if it is still running after a while it became the primary instance."""
-    process = subprocess.Popen(  # noqa: S603 - fixed executable, validated arguments, no shell
-        # -P: never import a "swoop" module from the browser's working directory.
-        [sys.executable, "-P", "-m", "swoop", *request.arguments],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,  # survive the browser closing this host
-    )
+    with log_path().open("a") as errors:  # the child keeps its own copy of the descriptor
+        process = subprocess.Popen(  # noqa: S603 - fixed executable, validated arguments, no shell
+            # -P: never import a "swoop" module from the browser's working directory.
+            [sys.executable, "-P", "-m", "swoop", *request.arguments],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=errors,
+            start_new_session=True,  # survive the browser closing this host
+        )
     try:
         process.communicate(request.stdin, timeout=LAUNCH_TIMEOUT)
     except subprocess.TimeoutExpired:
         return {"ok": True}
     code = process.returncode
-    return {"ok": True} if code == 0 else {"ok": False, "error": f"swoop exited with {code}"}
+    if code == 0:
+        return {"ok": True}
+    log.warning("swoop add exited with %s", code)
+    return {"ok": False, "error": f"swoop exited with {code}"}
 
 
 def handle(message: Any, launch: Launcher) -> Reply:
     try:
         request = parse_download(message)
     except ValidationError as exc:
+        log.warning("rejected a browser message: %s", exc)  # never echoes header values
         return {"ok": False, "error": str(exc)}
     return launch(request)
 
@@ -122,8 +129,21 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, launch: Launcher = launch_swoop) ->
         write_message(stdout, handle(message, launch))
 
 
+def log_path() -> Path:
+    """Where the host and the "swoop add" it starts report problems (the browser hides stderr)."""
+    state = os.environ.get("XDG_STATE_HOME", "")
+    directory = Path(state if os.path.isabs(state) else Path.home() / ".local/state") / "swoop"
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory / "native-host.log"
+
+
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, stream=sys.stderr)  # stdout belongs to the protocol
+    # stdout belongs to the protocol; the browser does not show stderr to users.
+    logging.basicConfig(
+        level=logging.INFO,
+        filename=log_path(),
+        format="%(asctime)s %(name)s: %(levelname)s %(message)s",
+    )
     try:
         serve(sys.stdin.buffer, sys.stdout.buffer)
     except ProtocolError as exc:
