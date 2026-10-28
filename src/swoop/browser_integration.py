@@ -39,8 +39,8 @@ _PERMISSIONS = ["downloads", "nativeMessaging", "contextMenus"]
 @dataclass(frozen=True)
 class Browser:
     name: str
-    profile_dir: str  # relative to the home directory
-    manifest_dir: str  # where the native messaging host manifest goes, relative to home
+    roots: tuple[str, ...]  # possible configuration directories, relative to home
+    manifest_subdir: str  # where the host manifest goes inside a root
     desktop_ids: tuple[str, ...]
     firefox: bool
 
@@ -48,22 +48,23 @@ class Browser:
 BROWSERS = (
     Browser(
         "Firefox",
-        ".mozilla",
-        ".mozilla/native-messaging-hosts",
+        # Firefox 147+ follows the XDG base directories; older releases use ~/.mozilla.
+        (".config/mozilla", ".mozilla"),
+        "native-messaging-hosts",
         ("firefox.desktop", "firefox-esr.desktop", "firefox-developer-edition.desktop"),
         firefox=True,
     ),
     Browser(
         "Chromium",
-        ".config/chromium",
-        ".config/chromium/NativeMessagingHosts",
+        (".config/chromium",),
+        "NativeMessagingHosts",
         ("chromium.desktop", "chromium-browser.desktop"),
         firefox=False,
     ),
     Browser(
         "Google Chrome",
-        ".config/google-chrome",
-        ".config/google-chrome/NativeMessagingHosts",
+        (".config/google-chrome",),
+        "NativeMessagingHosts",
         ("google-chrome.desktop", "google-chrome-stable.desktop"),
         firefox=False,
     ),
@@ -77,9 +78,13 @@ class ExtensionBuild:
 
 
 def installed_browsers(home: Path | None = None) -> list[Browser]:
-    """The supported browsers that have a profile in the home directory."""
+    """The supported browsers that have a configuration directory in the home directory."""
     home = home or Path.home()
-    return [browser for browser in BROWSERS if (home / browser.profile_dir).is_dir()]
+    return [browser for browser in BROWSERS if _existing_roots(browser, home)]
+
+
+def _existing_roots(browser: Browser, home: Path) -> list[Path]:
+    return [home / root for root in browser.roots if (home / root).is_dir()]
 
 
 def host_manifest(host_path: Path, *, firefox: bool) -> dict[str, Any]:
@@ -101,12 +106,13 @@ def install_host_manifests(home: Path | None = None, host_path: Path | None = No
     home = home or Path.home()
     host_path = host_path or _find_host()
     written = []
-    for browser in installed_browsers(home):
-        target = home / browser.manifest_dir / f"{HOST_NAME}.json"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        manifest = host_manifest(host_path, firefox=browser.firefox)
-        target.write_text(json.dumps(manifest, indent=2) + "\n")
-        written.append(target)
+    for browser in BROWSERS:
+        manifest = json.dumps(host_manifest(host_path, firefox=browser.firefox), indent=2)
+        for root in _existing_roots(browser, home):
+            target = root / browser.manifest_subdir / f"{HOST_NAME}.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(manifest + "\n")
+            written.append(target)
     return written
 
 
