@@ -1,7 +1,8 @@
-"""Swoop single-instance application.
+"""Single-instance backend shared by the GUI and the headless application.
 
 The first process becomes the primary instance and owns the backend; later
-invocations (CLI, browser host) are forwarded to it over D-Bus by Gio.
+invocations (CLI, browser host) are forwarded to it over D-Bus by Gio and
+executed here.
 """
 
 from __future__ import annotations
@@ -10,6 +11,7 @@ import argparse
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 
 import gi
 
@@ -19,26 +21,58 @@ from gi.repository import Gio, GLib  # noqa: E402
 from swoop.commands import build_parser  # noqa: E402
 from swoop.core.service import SwoopService  # noqa: E402
 from swoop.paths import APP_ID, AppPaths  # noqa: E402
+from swoop.text import describe  # noqa: E402
 
 log = logging.getLogger(__name__)
 
 MAX_STDIN_SIZE = 64 * 1024
 
 
-class SwoopApplication(Gio.Application):
-    def __init__(self) -> None:
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+class Backend:
+    """Runs the service for one primary instance and executes forwarded commands.
+
+    The application is held while the backend runs, so closing the window does
+    not stop downloads; quitting stops aria2 cleanly and releases it.
+    """
+
+    def __init__(self, app: Gio.Application, on_stopped: Callable[[], None] = lambda: None) -> None:
+        self._app = app
+        self._on_stopped = on_stopped
         self._service: asyncio.Task[SwoopService] | None = None
+        self._held = False
         self._quitting = False
 
-    def do_startup(self) -> None:
-        Gio.Application.do_startup(self)
-        self.hold()  # headless backend: stay alive until "swoop quit"
-        self._service = self.create_asyncio_task(self._start_service())
+    @property
+    def service(self) -> asyncio.Task[SwoopService]:
+        assert self._service is not None, "the backend has not been started"
+        return self._service
 
-    def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:
-        self.create_asyncio_task(self._run(command_line))
+    def start(self) -> None:
+        self._app.hold()
+        self._held = True
+        self._service = self._app.create_asyncio_task(self._start_service())
+
+    def handle(self, command_line: Gio.ApplicationCommandLine) -> int:
+        self._app.create_asyncio_task(self._run(command_line))
         return 0
+
+    async def quit(self) -> None:
+        """Stop the backend and let the application exit; later calls do nothing."""
+        if self._quitting:
+            return
+        self._quitting = True  # set before any await: concurrent quits stop only once
+        try:
+            await (await self.service).stop()
+        except Exception:
+            log.exception("Swoop did not shut down cleanly")
+        finally:
+            self._on_stopped()
+            self._release()
+
+    def _release(self) -> None:
+        if self._held:
+            self._held = False
+            self._app.release()
 
     async def _start_service(self) -> SwoopService:
         try:
@@ -46,7 +80,7 @@ class SwoopApplication(Gio.Application):
             await service.start()
         except Exception:
             log.exception("cannot start the Swoop backend")
-            self.release()
+            self._release()
             raise
         return service
 
@@ -68,22 +102,39 @@ class SwoopApplication(Gio.Application):
     ) -> None:
         if self._quitting:
             raise RuntimeError("Swoop is shutting down")
-        # Set before any await so that concurrent quits cannot stop and release twice.
-        self._quitting = args.command == "quit"
-        assert self._service is not None
-        service = await self._service
-        if args.command == "add":
+        if args.command is None:
+            self._app.activate()
+        elif args.command == "quit":
+            await self.quit()
+        elif args.command == "add":
             # Headers travel on stdin because argv is visible to other users (ps).
             headers = await _read_json_stdin(command_line) if args.headers_from_stdin else None
-            gid = await service.manager.add(
+            manager = (await self.service).manager
+            gid = await manager.add(
                 args.url, directory=args.dir, filename=args.out, headers=headers
             )
             command_line.print_literal(f"{gid}\n")
-        elif args.command == "quit":
-            try:
-                await service.stop()
-            finally:
-                self.release()  # exit even if the shutdown failed
+        elif args.command == "list":
+            for download in await (await self.service).manager.list_downloads():
+                command_line.print_literal(f"{download.gid}  {describe(download)}\n")
+
+
+class HeadlessApplication(Gio.Application):
+    """Swoop without a window, used when no display is available."""
+
+    def __init__(self) -> None:
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self._backend = Backend(self)
+
+    def do_startup(self) -> None:
+        Gio.Application.do_startup(self)
+        self._backend.start()
+
+    def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:
+        return self._backend.handle(command_line)
+
+    def do_activate(self) -> None:
+        """Nothing to show without a display; downloads run in the background."""
 
 
 async def _read_json_stdin(command_line: Gio.ApplicationCommandLine) -> object:

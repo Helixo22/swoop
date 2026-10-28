@@ -67,6 +67,16 @@ class Aria2Client:
             raise Aria2ConnectionError(f"cannot reach aria2 at {self._url}") from exc
         return _parse_response(response)
 
+    async def multicall(self, calls: list[tuple[str, list[Any]]]) -> list[Any]:
+        """Run several aria2 methods in one request; raise on the first failed one."""
+        requests = [
+            {"methodName": method, "params": [self._token, *params]} for method, params in calls
+        ]
+        results = await self.call("system.multicall", requests)
+        if not isinstance(results, list) or len(results) != len(calls):
+            raise Aria2Error("malformed system.multicall result")
+        return [_unwrap_multicall_item(item) for item in results]
+
     async def get_version(self) -> str:
         result = await self.call("aria2.getVersion")
         if not isinstance(result, dict) or "version" not in result:
@@ -86,8 +96,21 @@ def _parse_response(response: httpx.Response) -> Any:
         raise Aria2Error("malformed JSON-RPC response from aria2")
     error = body.get("error")
     if isinstance(error, dict):
-        code = error.get("code")
-        raise Aria2RpcError(code if isinstance(code, int) else -1, str(error.get("message", "")))
+        raise _rpc_error(error)
     if "result" not in body:
         raise Aria2Error("JSON-RPC response from aria2 has no result")
     return body["result"]
+
+
+def _unwrap_multicall_item(item: Any) -> Any:
+    """Multicall wraps each result in a one-item list and reports failures as error objects."""
+    if isinstance(item, list) and len(item) == 1:
+        return item[0]
+    if isinstance(item, dict):
+        raise _rpc_error(item)
+    raise Aria2Error("malformed system.multicall item")
+
+
+def _rpc_error(error: dict[str, Any]) -> Aria2RpcError:
+    code = error.get("code")
+    return Aria2RpcError(code if isinstance(code, int) else -1, str(error.get("message", "")))

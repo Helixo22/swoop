@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Swoop
+GenericName=Download Manager
+Comment=Download files faster with aria2
+Exec=swoop
+Icon=io.github.swoop.Swoop
+Terminal=false
+Categories=Network;FileTransfer;GTK;
+Keywords=download;aria2;
+StartupNotify=true

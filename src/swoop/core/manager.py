@@ -20,7 +20,8 @@ from swoop.validation import (
 )
 
 # aria2 keeps at most this many stopped results by default (--max-download-result).
-_MAX_STOPPED = 1000
+_MAX_RESULTS = 1000
+_FINISHED = frozenset({DownloadStatus.COMPLETE, DownloadStatus.REMOVED})
 
 
 class DownloadManager:
@@ -72,19 +73,27 @@ class DownloadManager:
     async def get(self, gid: str) -> Download:
         return Download.from_status(await self._client.call("aria2.tellStatus", gid, STATUS_KEYS))
 
-    async def archive_completed(self) -> list[Download]:
-        """Move completed downloads out of aria2's results and into the history."""
-        stopped = await self._client.call("aria2.tellStopped", 0, _MAX_STOPPED, STATUS_KEYS)
-        if not isinstance(stopped, list):
-            raise Aria2Error("malformed aria2.tellStopped result")
-        completed = [
-            download
-            for download in map(Download.from_status, stopped)
-            if download.status is DownloadStatus.COMPLETE
-        ]
-        for download in completed:
-            self._history.record(download)
-            # Recorded first: if aria2 already dropped the result there is nothing to lose.
-            with contextlib.suppress(Aria2RpcError):
-                await self._client.call("aria2.removeDownloadResult", download.gid)
-        return completed
+    async def list_downloads(self) -> list[Download]:
+        """Archive completed downloads, then return the rest: active, waiting and failed."""
+        results = await self._client.multicall(
+            [
+                ("aria2.tellActive", [STATUS_KEYS]),
+                ("aria2.tellWaiting", [0, _MAX_RESULTS, STATUS_KEYS]),
+                ("aria2.tellStopped", [0, _MAX_RESULTS, STATUS_KEYS]),
+            ]
+        )
+        if not all(isinstance(result, list) for result in results):
+            raise Aria2Error("malformed aria2 download list")
+        downloads = [Download.from_status(status) for result in results for status in result]
+        for download in downloads:
+            if download.status is DownloadStatus.COMPLETE:
+                # Recorded first: if aria2 already dropped the result there is nothing to lose.
+                self._history.record(download)
+            if download.status in _FINISHED:
+                await self._forget(download.gid)
+        return [download for download in downloads if download.status not in _FINISHED]
+
+    async def _forget(self, gid: str) -> None:
+        """Drop a finished result so aria2 does not report it again."""
+        with contextlib.suppress(Aria2RpcError):  # already dropped, e.g. by a concurrent refresh
+            await self._client.call("aria2.removeDownloadResult", gid)

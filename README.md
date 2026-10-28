@@ -1,4 +1,4 @@
-<p align="center"><img src="data/icons/io.github.swoop.Swoop.svg" width="128" alt="Swoop logo"></p>
+<p align="center"><img src="src/swoop/ui/icons/hicolor/scalable/apps/io.github.swoop.Swoop.svg" width="128" alt="Swoop logo"></p>
 
 # Swoop
 
@@ -11,13 +11,17 @@ interface, a CLI, browser integration and the lifecycle management of the aria2 
 ## Usage
 
 ```sh
-swoop                         # start Swoop (aria2 runs in the background)
+swoop                         # open the window (aria2 runs in the background)
 swoop add <url> [--dir DIR] [--out NAME]
-swoop quit
+swoop list                    # unfinished downloads
+swoop quit                    # stop Swoop and aria2
 swoop install-browser-host    # register the native messaging host for Firefox/Chromium
 ```
 
 Commands sent while Swoop is running are forwarded to the running instance over D-Bus.
+Closing the window keeps downloads going; choose Quit (Ctrl+Q) to stop them. Without a
+display Swoop runs headless. Preferences (Ctrl+,) set the number of simultaneous downloads
+and the speed limit, saved in `~/.config/swoop/config.toml`.
 
 ## Browser extension
 

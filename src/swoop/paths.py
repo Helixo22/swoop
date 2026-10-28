@@ -36,6 +36,10 @@ class AppPaths:
         )
 
     @property
+    def config_file(self) -> Path:
+        return self.config_dir / "config.toml"
+
+    @property
     def session_file(self) -> Path:
         return self.data_dir / "aria2.session"
 

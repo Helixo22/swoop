@@ -39,6 +39,11 @@ class QueueLimits:
     max_download_speed: int = 0  # bytes per second, 0 means unlimited
 
     def __post_init__(self) -> None:
+        # Values may come from the config file: anything but a plain int would reach aria2.
+        if not all(
+            type(value) is int for value in (self.max_concurrent_downloads, self.max_download_speed)
+        ):
+            raise ValueError("queue limits must be integers")
         if self.max_concurrent_downloads < 1:
             raise ValueError("max_concurrent_downloads must be at least 1")
         if self.max_download_speed < 0:
