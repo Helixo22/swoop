@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Callable
@@ -76,12 +77,15 @@ class Backend:
             self._app.release()
 
     async def _start_service(self) -> SwoopService:
-        service = SwoopService(AppPaths.from_environment())
+        service: SwoopService | None = None
         try:
+            service = SwoopService(AppPaths.from_environment())
             await service.start()
         except Exception:
             log.exception("cannot start the Swoop backend")
-            await service.stop()  # close the RPC client and the history database
+            if service is not None:
+                with contextlib.suppress(Exception):
+                    await service.stop()  # close the RPC client and the history database
             self._release()
             raise
         return service

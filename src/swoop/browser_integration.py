@@ -15,6 +15,7 @@ import zipfile
 from dataclasses import dataclass
 from importlib.metadata import version
 from importlib.resources import as_file, files
+from importlib.resources.abc import Traversable
 from pathlib import Path
 from typing import Any
 
@@ -197,14 +198,14 @@ def export_extension(target: Path) -> ExtensionBuild:
         manifest = json.dumps(extension_manifest(firefox), indent=2) + "\n"
         (directory / "manifest.json").write_text(manifest)
     package = target / "swoop-firefox.xpi"
-    signed = files("swoop") / "data" / SIGNED_FIREFOX_PACKAGE
-    if signed.is_file():
-        package.write_bytes(signed.read_bytes())
+    signed = has_signed_firefox_package()
+    if signed:
+        package.write_bytes(_signed_firefox_package().read_bytes())
     else:
         with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
             for file in sorted(firefox_dir.rglob("*")):
                 archive.write(file, file.relative_to(firefox_dir))
-    return ExtensionBuild(package, signed.is_file(), firefox_dir, chromium_dir)
+    return ExtensionBuild(package, signed, firefox_dir, chromium_dir)
 
 
 def open_extension_installer(browser: Browser, build: ExtensionBuild) -> None:
@@ -233,7 +234,11 @@ def unpacked_dir(browser: Browser, build: ExtensionBuild) -> Path | None:
 
 
 def has_signed_firefox_package() -> bool:
-    return (files("swoop") / "data" / SIGNED_FIREFOX_PACKAGE).is_file()
+    return _signed_firefox_package().is_file()
+
+
+def _signed_firefox_package() -> Traversable:
+    return files("swoop") / "data" / SIGNED_FIREFOX_PACKAGE
 
 
 def _find_host() -> Path:
