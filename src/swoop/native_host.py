@@ -1,7 +1,8 @@
 """Native messaging host for the Swoop browser extension.
 
 Reads length-prefixed JSON messages from the browser on stdin, validates them
-strictly and hands accepted downloads to Swoop by running "swoop add".
+strictly and hands accepted downloads to Swoop by running "swoop add"; request
+headers (cookies) are passed on its stdin, never on the command line.
 """
 
 from __future__ import annotations
@@ -12,19 +13,35 @@ import struct
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, BinaryIO
 
-from swoop.validation import ValidationError, validate_filename, validate_url
+from swoop.validation import (
+    ValidationError,
+    validate_filename,
+    validate_headers,
+    validate_url,
+)
 
 log = logging.getLogger(__name__)
 
 MAX_MESSAGE_SIZE = 64 * 1024
 LAUNCH_TIMEOUT = 3.0
 _HEADER = struct.Struct("=I")  # native-endian uint32, as the browsers send it
-_ALLOWED_KEYS = frozenset({"action", "url", "filename"})
+_ALLOWED_KEYS = frozenset({"action", "url", "filename", "headers"})
 
 Reply = dict[str, Any]
-Launcher = Callable[[list[str]], Reply]
+
+
+@dataclass(frozen=True)
+class LaunchRequest:
+    """A validated "swoop add" invocation and the data to write on its stdin."""
+
+    arguments: list[str]
+    stdin: bytes = b""
+
+
+Launcher = Callable[[LaunchRequest], Reply]
 
 
 class ProtocolError(Exception):
@@ -56,8 +73,8 @@ def write_message(stream: BinaryIO, message: Reply) -> None:
     stream.flush()
 
 
-def parse_download(message: Any) -> list[str]:
-    """Turn a browser message into "swoop add" arguments, rejecting anything unexpected."""
+def parse_download(message: Any) -> LaunchRequest:
+    """Turn a browser message into a "swoop add" invocation, rejecting anything unexpected."""
     if not isinstance(message, dict) or message.get("action") != "download":
         raise ValidationError("unsupported message")
     if not _ALLOWED_KEYS.issuperset(message):
@@ -66,32 +83,38 @@ def parse_download(message: Any) -> list[str]:
     if not isinstance(url, str) or not isinstance(filename, str | None):
         raise ValidationError("url and filename must be strings")
     options = [] if filename is None else [f"--out={validate_filename(filename)}"]
-    return ["add", *options, "--", validate_url(url)]
+    headers = message.get("headers")
+    if headers is None:
+        return LaunchRequest(["add", *options, "--", validate_url(url)])
+    validate_headers(headers)
+    arguments = ["add", *options, "--headers-from-stdin", "--", validate_url(url)]
+    return LaunchRequest(arguments, json.dumps(headers).encode())
 
 
-def launch_swoop(arguments: list[str]) -> Reply:
+def launch_swoop(request: LaunchRequest) -> Reply:
     """Run "swoop add"; if it is still running after a while it became the primary instance."""
     process = subprocess.Popen(  # noqa: S603 - fixed executable, validated arguments, no shell
         # -P: never import a "swoop" module from the browser's working directory.
-        [sys.executable, "-P", "-m", "swoop", *arguments],
-        stdin=subprocess.DEVNULL,
+        [sys.executable, "-P", "-m", "swoop", *request.arguments],
+        stdin=subprocess.PIPE,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,  # survive the browser closing this host
     )
     try:
-        code = process.wait(timeout=LAUNCH_TIMEOUT)
+        process.communicate(request.stdin, timeout=LAUNCH_TIMEOUT)
     except subprocess.TimeoutExpired:
         return {"ok": True}
+    code = process.returncode
     return {"ok": True} if code == 0 else {"ok": False, "error": f"swoop exited with {code}"}
 
 
 def handle(message: Any, launch: Launcher) -> Reply:
     try:
-        arguments = parse_download(message)
+        request = parse_download(message)
     except ValidationError as exc:
         return {"ok": False, "error": str(exc)}
-    return launch(arguments)
+    return launch(request)
 
 
 def serve(stdin: BinaryIO, stdout: BinaryIO, launch: Launcher = launch_swoop) -> None:

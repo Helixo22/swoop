@@ -27,6 +27,11 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("url")
     add.add_argument("--dir", help="destination directory (relative paths start at home)")
     add.add_argument("--out", help="output file name")
+    add.add_argument(
+        "--headers-from-stdin",
+        action="store_true",
+        help="read request headers (JSON object: Cookie, Referer, User-Agent) from stdin",
+    )
     commands.add_parser("quit", help="stop the running Swoop instance")
     commands.add_parser("install-browser-host", help="register the browser extension host")
     return parser

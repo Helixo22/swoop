@@ -40,7 +40,7 @@ ignore = ["S101"]
 [tool.mypy]
 strict = true
 python_version = "3.11"
-files = ["src", "tests"]
+files = ["src", "tests", "browser-extension/build.py"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

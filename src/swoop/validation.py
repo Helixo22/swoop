@@ -1,7 +1,8 @@
 """Validation of untrusted input before it reaches aria2.
 
-Checks download URLs, output file names and destination directories so that
-only supported schemes are accepted and nothing escapes the allowed root.
+Checks download URLs, request headers, output file names and destination
+directories so that only supported schemes are accepted, nothing can be injected
+into aria2 options and nothing escapes the allowed root.
 """
 
 from __future__ import annotations
@@ -12,6 +13,8 @@ from urllib.parse import urlsplit
 ALLOWED_SCHEMES = frozenset({"http", "https", "ftp", "sftp"})
 MAX_URL_LENGTH = 8192
 MAX_FILENAME_BYTES = 255
+ALLOWED_HEADERS = frozenset({"Cookie", "Referer", "User-Agent"})
+MAX_HEADER_LENGTH = 16 * 1024
 
 
 class ValidationError(ValueError):
@@ -35,6 +38,21 @@ def validate_url(url: str) -> str:
     if not has_host:
         raise ValidationError("URL has no host")
     return url
+
+
+def validate_headers(headers: object) -> list[str]:
+    """Return aria2 "header" option lines for the request headers a browser may forward."""
+    if not isinstance(headers, dict) or not all(isinstance(v, str) for v in headers.values()):
+        raise ValidationError("headers must map names to strings")
+    if not ALLOWED_HEADERS.issuperset(headers):
+        raise ValidationError("only Cookie, Referer and User-Agent headers are allowed")
+    for name, value in headers.items():
+        # Values are never echoed back: they may hold session cookies.
+        if len(value) > MAX_HEADER_LENGTH or not (value.isascii() and value.isprintable()):
+            raise ValidationError(f"invalid {name} header")
+    if "Referer" in headers:
+        validate_url(headers["Referer"])
+    return [f"{name}: {value}" for name, value in headers.items()]
 
 
 def validate_filename(name: str) -> str:

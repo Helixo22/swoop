@@ -12,7 +12,12 @@ from pathlib import Path
 from swoop.aria2.rpc import Aria2Client, Aria2Error, Aria2RpcError
 from swoop.core.history import History
 from swoop.core.models import STATUS_KEYS, Download, DownloadStatus
-from swoop.validation import resolve_directory, validate_filename, validate_url
+from swoop.validation import (
+    resolve_directory,
+    validate_filename,
+    validate_headers,
+    validate_url,
+)
 
 # aria2 keeps at most this many stopped results by default (--max-download-result).
 _MAX_STOPPED = 1000
@@ -27,14 +32,24 @@ class DownloadManager:
         self._history = history
 
     async def add(
-        self, url: str, *, directory: str | Path | None = None, filename: str | None = None
+        self,
+        url: str,
+        *,
+        directory: str | Path | None = None,
+        filename: str | None = None,
+        headers: object = None,
     ) -> str:
-        """Queue url for download and return its aria2 GID."""
-        options: dict[str, str] = {}
+        """Queue url for download and return its aria2 GID.
+
+        headers (Cookie, Referer, User-Agent) apply to this download only.
+        """
+        options: dict[str, str | list[str]] = {}
         if directory is not None:
             options["dir"] = str(resolve_directory(directory, self._allowed_root))
         if filename is not None:
             options["out"] = validate_filename(filename)
+        if headers is not None:
+            options["header"] = validate_headers(headers)
         gid = await self._client.call("aria2.addUri", [validate_url(url)], options)
         if not isinstance(gid, str):
             raise Aria2Error("malformed aria2.addUri result")
