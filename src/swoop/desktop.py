@@ -28,17 +28,25 @@ def in_flatpak() -> bool:
 
 
 def install_desktop_entry(data_home: Path, executable: Path) -> list[Path]:
-    """Write the launcher (pointing at executable) and the icon; return what was written."""
+    """Write the launcher (pointing at executable) and the icons; return what was written.
+
+    Every size of the logo is installed: launchers that render SVG poorly (or
+    not at all) pick the pre-rendered PNG closest to the size they need.
+    """
     entry = data_home / "applications" / DESKTOP_FILE
-    icon = data_home / "icons" / "hicolor" / "scalable" / "apps" / f"{APP_ID}.svg"
     template = (files("swoop") / "data" / DESKTOP_FILE).read_text()
     entry.parent.mkdir(parents=True, exist_ok=True)
     entry.write_text(template.replace("Exec=swoop ", f"Exec={exec_quote(executable)} ", 1))
-    logo = files("swoop") / "ui" / "icons" / "hicolor" / "scalable" / "apps" / f"{APP_ID}.svg"
-    icon.parent.mkdir(parents=True, exist_ok=True)
-    icon.write_bytes(logo.read_bytes())
+    written = [entry]
+    themes = data_home / "icons" / "hicolor"
+    for size in (files("swoop") / "ui" / "icons" / "hicolor").iterdir():
+        for icon in (size / "apps").iterdir():
+            target = themes / size.name / "apps" / icon.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(icon.read_bytes())
+            written.append(target)
     _refresh_caches(data_home)
-    return [entry, icon]
+    return written
 
 
 def open_magnets_with_swoop() -> None:

@@ -8,9 +8,9 @@
   <rect x="8" y="14" width="112" height="108" rx="26" fill="#2a3a9e"/>
   <rect x="8" y="8" width="112" height="108" rx="26" fill="url(#face)"/>
   <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M100 46 C 84 46, 74 52, 72 60" stroke-width="5" opacity="0.45"/>
+    <path d="M100 46 C 84 46, 74 52, 72 60" stroke-width="5" stroke-opacity="0.45"/>
     <path d="M98 30 C 60 30, 62 54, 62 84" stroke-width="12"/>
     <path d="M46 70 L62 86 L78 70" stroke-width="12"/>
-    <path d="M34 100 H90" stroke-width="8" opacity="0.9"/>
+    <path d="M34 100 H90" stroke-width="8" stroke-opacity="0.9"/>
   </g>
 </svg>
