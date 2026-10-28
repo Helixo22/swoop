@@ -16,7 +16,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import IO, Any, BinaryIO
 
 from swoop.validation import (
     ValidationError,
@@ -95,15 +95,19 @@ def parse_download(message: Any) -> LaunchRequest:
 
 def launch_swoop(request: LaunchRequest) -> Reply:
     """Run "swoop add"; if it is still running after a while it became the primary instance."""
-    with log_path().open("a") as errors:  # the child keeps its own copy of the descriptor
+    errors = _open_log()
+    try:
         process = subprocess.Popen(  # noqa: S603 - fixed executable, validated arguments, no shell
             # -P: never import a "swoop" module from the browser's working directory.
             [sys.executable, "-P", "-m", "swoop", *request.arguments],
             stdin=subprocess.PIPE,
             stdout=subprocess.DEVNULL,
-            stderr=errors,
+            stderr=subprocess.DEVNULL if errors is None else errors,
             start_new_session=True,  # survive the browser closing this host
         )
+    finally:
+        if errors is not None:
+            errors.close()  # the child keeps its own copy of the descriptor
     try:
         process.communicate(request.stdin, timeout=LAUNCH_TIMEOUT)
     except subprocess.TimeoutExpired:
@@ -132,16 +136,32 @@ def serve(stdin: BinaryIO, stdout: BinaryIO, launch: Launcher = launch_swoop) ->
 def log_path() -> Path:
     """Where the host and the "swoop add" it starts report problems (the browser hides stderr)."""
     state = os.environ.get("XDG_STATE_HOME", "")
-    directory = Path(state if os.path.isabs(state) else Path.home() / ".local/state") / "swoop"
-    directory.mkdir(parents=True, exist_ok=True)
-    return directory / "native-host.log"
+    # The XDG spec says relative paths must be ignored.
+    state_dir = Path(state) if os.path.isabs(state) else Path.home() / ".local/state"
+    return state_dir / "swoop" / "native-host.log"
+
+
+def _open_log() -> IO[str] | None:
+    """Open the log for appending, private to the user since it may name URLs."""
+    path = log_path()
+    try:
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        return open(path, "a", encoding="utf-8", opener=_private)
+    except OSError:
+        return None  # an unwritable home must not break downloads
+
+
+def _private(path: str, flags: int) -> int:
+    descriptor = os.open(path, flags, 0o600)
+    os.fchmod(descriptor, 0o600)  # also tightens a log created by an older version
+    return descriptor
 
 
 def main() -> int:
     # stdout belongs to the protocol; the browser does not show stderr to users.
     logging.basicConfig(
         level=logging.INFO,
-        filename=log_path(),
+        stream=_open_log() or sys.stderr,
         format="%(asctime)s %(name)s: %(levelname)s %(message)s",
     )
     try:

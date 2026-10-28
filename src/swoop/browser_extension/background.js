@@ -15,13 +15,13 @@ function basename(path) {
   return path ? path.split(/[\\/]/).pop() || undefined : undefined;
 }
 
-// Cookies Swoop can forward safely: printable ASCII without separators. Others are
-// skipped instead of making Swoop refuse the whole download.
-const COOKIE_TEXT = /^[\x21-\x7e]*$/;
+// Cookies Swoop can forward safely: printable ASCII without spaces or ";". Others
+// are skipped instead of making Swoop refuse the whole download.
+const COOKIE_TEXT = /^[\x21-\x3a\x3c-\x7e]*$/;
 
 function cookieHeader(cookies) {
   return cookies
-    .filter((c) => COOKIE_TEXT.test(c.name) && COOKIE_TEXT.test(c.value) && !/;/.test(c.value))
+    .filter((c) => COOKIE_TEXT.test(c.name) && COOKIE_TEXT.test(c.value))
     .map((c) => (c.name ? `${c.name}=${c.value}` : c.value))
     .join("; ");
 }

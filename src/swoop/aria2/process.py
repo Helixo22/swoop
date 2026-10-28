@@ -89,9 +89,9 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
         f"--split={settings.connections_per_download}",
         f"--max-connection-per-server={settings.connections_per_download}",
         "--min-split-size=1M",
-        # Reserve space instantly (ext4, btrfs, xfs) instead of writing zeros first,
-        # which kept large downloads from starting for minutes.
-        "--file-allocation=falloc",
+        # Start writing at once instead of preallocating by writing zeros, which kept
+        # large downloads from starting for minutes; trunc works on every filesystem.
+        "--file-allocation=trunc",
         "--disk-cache=64M",
         "--connect-timeout=10",
         "--timeout=30",
