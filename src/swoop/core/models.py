@@ -45,6 +45,7 @@ class Download:
     connections: int
     directory: str
     paths: tuple[str, ...]
+    url: str
     error_message: str
 
     @classmethod
@@ -66,6 +67,7 @@ class Download:
             connections=int(status.get("connections", 0)),
             directory=status.get("dir", ""),
             paths=tuple(file["path"] for file in status.get("files", []) if file.get("path")),
+            url=_first_uri(status.get("files", [])),
             error_message=status.get("errorMessage", ""),
         )
 
@@ -76,3 +78,8 @@ class Download:
     @property
     def progress(self) -> float:
         return self.completed_length / self.total_length if self.total_length else 0.0
+
+
+def _first_uri(files: list[dict[str, Any]]) -> str:
+    uris = files[0].get("uris", []) if files else []
+    return str(uris[0]["uri"]) if uris else ""

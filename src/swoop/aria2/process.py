@@ -23,6 +23,7 @@ _READY_POLL_INTERVAL = 0.05
 _RESTART_BASE_DELAY = 0.5
 _RESTART_MAX_DELAY = 30.0
 _STABLE_UPTIME = 30.0
+_SESSION_SAVE_INTERVAL = 10
 
 
 class Aria2StartError(Aria2Error):
@@ -34,6 +35,7 @@ class Aria2Settings:
     """Static launch parameters of aria2c."""
 
     download_dir: Path
+    session_file: Path
     executable: str = "aria2c"
     connections_per_download: int = 8
     startup_timeout: float = 10.0
@@ -54,6 +56,9 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
         "--rpc-listen-all=false",
         f"--rpc-listen-port={port}",
         f"--dir={settings.download_dir}",
+        f"--input-file={settings.session_file}",
+        f"--save-session={settings.session_file}",
+        f"--save-session-interval={_SESSION_SAVE_INTERVAL}",
         f"--split={settings.connections_per_download}",
         f"--max-connection-per-server={settings.connections_per_download}",
         "--min-split-size=1M",
@@ -121,6 +126,7 @@ class Aria2Process:
             raise
 
     async def _launch(self) -> asyncio.subprocess.Process:
+        _ensure_session_file(self._settings.session_file)
         conf_fd = os.memfd_create("swoop-aria2-conf")
         try:
             os.write(conf_fd, f"rpc-secret={self._secret}\n".encode())
@@ -176,6 +182,12 @@ class Aria2Process:
         except TimeoutError:
             log.warning("aria2c did not exit in time, killing it")
             await _kill(process)
+
+
+def _ensure_session_file(path: Path) -> None:
+    """aria2c refuses to start when --input-file is missing, so create it empty."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch(exist_ok=True)
 
 
 async def _kill(process: asyncio.subprocess.Process) -> None:
