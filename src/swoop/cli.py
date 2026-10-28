@@ -31,16 +31,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.command == "open":
         argv = [argv[0], *(_open_command(args.target) if args.target else [])]
-    if args.command == "setup-browsers":
-        build = export_extension(AppPaths.from_environment().data_dir / "browser-extension")
-        for path in (*install_host_manifests(), build.firefox_package, build.chromium_dir):
-            print(path)
-        return 0
-    if args.command == "install-desktop":
-        data_home = AppPaths.from_environment().data_dir.parent
-        for path in install_desktop_entry(data_home, current_executable()):
-            print(path)
-        return 0
+    if args.command in _LOCAL_COMMANDS:
+        try:
+            return _LOCAL_COMMANDS[args.command]()
+        except OSError as exc:
+            print(f"swoop: {exc}", file=sys.stderr)
+            return 1
     # The stubs target Python 3.11, whose policy ABC still declares child watchers.
     with GLibEventLoopPolicy():  # type: ignore[abstract]
         return int(_application().run(argv))
@@ -65,3 +61,21 @@ def _open_command(target: str) -> list[str]:
     if path.is_native() and (local := path.get_path()):
         return ["add-torrent", "--present", "--", local]
     return ["add", "--present", "--", target]
+
+
+def _setup_browsers() -> int:
+    build = export_extension(AppPaths.from_environment().data_dir / "browser-extension")
+    for path in (*install_host_manifests(), build.firefox_package, build.chromium_dir):
+        print(path)
+    return 0
+
+
+def _install_desktop() -> int:
+    data_home = AppPaths.from_environment().data_dir.parent
+    for path in install_desktop_entry(data_home, current_executable()):
+        print(path)
+    return 0
+
+
+# Commands that run in this process instead of being forwarded to the running instance.
+_LOCAL_COMMANDS = {"setup-browsers": _setup_browsers, "install-desktop": _install_desktop}

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import zipfile
 from dataclasses import dataclass
 from importlib.metadata import version
@@ -117,7 +118,12 @@ class ExtensionBuild:
 def installed_browsers(home: Path | None = None) -> list[Browser]:
     """The supported browsers that have a configuration directory in the home directory."""
     home = home or Path.home()
-    return [browser for browser in BROWSERS if _existing_roots(browser, home)]
+    return [browser for browser in BROWSERS if _existing_roots(browser, home) and _present(browser)]
+
+
+def _present(browser: Browser) -> bool:
+    """A Flatpak keeps its data after uninstalling, so also require the app itself."""
+    return not browser.sandboxed or any(map(desktop_app, browser.desktop_ids))
 
 
 def _existing_roots(browser: Browser, home: Path) -> list[Path]:
@@ -231,7 +237,11 @@ def has_signed_firefox_package() -> bool:
 
 
 def _find_host() -> Path:
+    """The host installed next to the running interpreter (virtualenv, pipx), else on PATH."""
+    beside = Path(sys.executable).parent / HOST_EXECUTABLE
+    if beside.is_file():
+        return beside
     found = shutil.which(HOST_EXECUTABLE)
     if found is None:
-        raise FileNotFoundError(f"{HOST_EXECUTABLE} is not on PATH; install Swoop first")
+        raise FileNotFoundError(f"{HOST_EXECUTABLE} is not installed; install Swoop first")
     return Path(found).resolve()
