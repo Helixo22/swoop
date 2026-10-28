@@ -1,7 +1,7 @@
 """Runtime composition of the Swoop backend.
 
 Owns the aria2c process, the download manager, the history and the user's
-queue limits, and publishes a snapshot of all downloads every second.
+preferences, and publishes a snapshot of all downloads every second.
 """
 
 from __future__ import annotations
@@ -14,9 +14,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from swoop.aria2.process import Aria2Process, Aria2Settings, QueueLimits
+from swoop.aria2.process import Aria2Process, Aria2Settings
 from swoop.aria2.rpc import Aria2Error
-from swoop.config import load_limits, save_limits
+from swoop.config import Preferences, load_preferences, save_preferences
 from swoop.core.history import History, HistoryEntry
 from swoop.core.manager import DownloadManager
 from swoop.core.models import Download
@@ -47,12 +47,13 @@ class SwoopService:
     def __init__(self, paths: AppPaths, allowed_root: Path | None = None) -> None:
         paths.create()
         self._config_file = paths.config_file
-        self._limits = load_limits(paths.config_file)
+        self._default_download_dir = paths.download_dir
+        self._preferences = load_preferences(paths.config_file)
         self._aria2 = Aria2Process(
             Aria2Settings(
-                download_dir=paths.download_dir,
+                download_dir=self.download_dir,
                 session_file=paths.session_file,
-                limits=self._limits,
+                limits=self._preferences.limits,
             )
         )
         self._history = History(paths.history_db)
@@ -63,8 +64,12 @@ class SwoopService:
         self._refresher: asyncio.Task[None] | None = None
 
     @property
-    def limits(self) -> QueueLimits:
-        return self._limits
+    def preferences(self) -> Preferences:
+        return self._preferences
+
+    @property
+    def download_dir(self) -> Path:
+        return self._preferences.download_dir or self._default_download_dir
 
     async def start(self) -> None:
         await self._aria2.start()
@@ -78,11 +83,13 @@ class SwoopService:
         await self._aria2.stop()
         self._history.close()
 
-    async def set_limits(self, limits: QueueLimits) -> None:
-        """Apply new queue limits now and remember them for the next start."""
-        await self._aria2.apply_limits(limits)
-        self._limits = limits
-        save_limits(self._config_file, limits)
+    async def update_preferences(self, preferences: Preferences) -> None:
+        """Apply new preferences to aria2 now and remember them for the next start."""
+        directory = preferences.download_dir or self._default_download_dir
+        directory.mkdir(parents=True, exist_ok=True)
+        await self._aria2.reconfigure(limits=preferences.limits, download_dir=directory)
+        self._preferences = preferences
+        save_preferences(self._config_file, preferences)
 
     def subscribe(self, listener: Listener) -> Callable[[], None]:
         """Call listener with every new snapshot; return a function that unsubscribes."""

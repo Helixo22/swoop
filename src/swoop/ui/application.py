@@ -9,10 +9,11 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from importlib.metadata import version
 
-from gi.repository import Adw, Gio, Gtk
+from gi.repository import Adw, Gdk, Gio, Gtk
 
 from swoop.app import Backend
 from swoop.paths import APP_ID
+from swoop.ui import theme
 from swoop.ui.window import SwoopWindow
 
 WEBSITE = "https://github.com/Helixo22/swoop"
@@ -30,6 +31,9 @@ class SwoopApplication(Adw.Application):
 
     def do_startup(self) -> None:
         Adw.Application.do_startup(self)
+        display = Gdk.Display.get_default()
+        if display is not None:
+            theme.install(display)
         self._backend.start()
         self._add_action(
             "quit", lambda: self.create_asyncio_task(self._backend.quit()), ["<Control>q"]
@@ -37,6 +41,7 @@ class SwoopApplication(Adw.Application):
         self._add_action(
             "preferences", lambda: self._present_window().present_preferences(), ["<Control>comma"]
         )
+        self._add_action("setup", lambda: self._present_window().present_setup_guide())
         self._add_action("about", self._present_about)
 
     def do_command_line(self, command_line: Gio.ApplicationCommandLine) -> int:

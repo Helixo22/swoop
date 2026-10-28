@@ -22,6 +22,17 @@ _MANIFEST_DIRS = {
     ".config/chromium": ".config/chromium/NativeMessagingHosts",
     ".config/google-chrome": ".config/google-chrome/NativeMessagingHosts",
 }
+_BROWSER_NAMES = {
+    ".mozilla": "Firefox",
+    ".config/chromium": "Chromium",
+    ".config/google-chrome": "Google Chrome",
+}
+
+
+def installed_browsers(home: Path | None = None) -> list[str]:
+    """Names of the supported browsers that have a profile in the home directory."""
+    home = home or Path.home()
+    return [name for profile, name in _BROWSER_NAMES.items() if (home / profile).is_dir()]
 
 
 def host_manifest(host_path: Path, *, firefox: bool) -> dict[str, Any]:

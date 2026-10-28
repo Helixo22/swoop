@@ -19,9 +19,10 @@ swoop install-browser-host    # register the native messaging host for Firefox/C
 ```
 
 Commands sent while Swoop is running are forwarded to the running instance over D-Bus.
-Closing the window keeps downloads going; choose Quit (Ctrl+Q) to stop them. Without a
-display Swoop runs headless. Preferences (Ctrl+,) set the number of simultaneous downloads
-and the speed limit, saved in `~/.config/swoop/config.toml`.
+On first launch a setup guide configures Swoop in one click (download folder, queue limits,
+browser integration); it can be reopened from the menu. Closing the window keeps downloads going; choose Quit (Ctrl+Q) to stop them. Without a
+display Swoop runs headless. Preferences (Ctrl+,) set the download folder, the number of
+simultaneous downloads and the speed limit, saved in `~/.config/swoop/config.toml`.
 
 ## Browser extension
 

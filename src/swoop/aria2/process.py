@@ -2,7 +2,7 @@
 
 Starts aria2c with RPC bound to localhost and a fresh random secret, waits for
 the endpoint to answer, restarts it after crashes and shuts it down cleanly.
-Queue limits are aria2 global options and are kept across restarts.
+Queue limits and the download folder are aria2 global options kept across restarts.
 """
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ class Aria2Process:
         self.client = Aria2Client(f"http://127.0.0.1:{self._port}/jsonrpc", self._secret)
         self._process: asyncio.subprocess.Process | None = None
         self._watchdog: asyncio.Task[None] | None = None
-        self._limits_lock = asyncio.Lock()
+        self._options_lock = asyncio.Lock()
 
     @property
     def port(self) -> int:
@@ -125,14 +125,23 @@ class Aria2Process:
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
 
-    async def apply_limits(self, limits: QueueLimits) -> None:
-        """Change queue limits at runtime; later restarts launch aria2c with them too."""
+    async def reconfigure(
+        self, *, limits: QueueLimits | None = None, download_dir: Path | None = None
+    ) -> None:
+        """Change global options at runtime; later restarts launch aria2c with them too."""
+        options = {} if limits is None else limits.as_options()
+        if download_dir is not None:
+            options["dir"] = str(download_dir)  # applies to downloads added from now on
         # Serialized so overlapping calls cannot reach aria2 out of order and leave it
-        # with other limits than the stored ones.
-        async with self._limits_lock:
+        # with other options than the stored ones.
+        async with self._options_lock:
             # Stored first so that a restart racing with this call still picks them up.
-            self._settings = replace(self._settings, limits=limits)
-            await self.client.call("aria2.changeGlobalOption", limits.as_options())
+            self._settings = replace(
+                self._settings,
+                limits=limits or self._settings.limits,
+                download_dir=download_dir or self._settings.download_dir,
+            )
+            await self.client.call("aria2.changeGlobalOption", options)
 
     async def start(self) -> None:
         """Launch aria2c and keep it alive until stop() is called."""

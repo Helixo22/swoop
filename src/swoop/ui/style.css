@@ -1,0 +1,157 @@
+/* Swoop look: soft, rounded, iOS-inspired surfaces on top of libadwaita.
+   Backgrounds and text follow the user's theme (including gtk.css overrides);
+   brand elements (primary buttons, progress, graphs) use explicit colours from
+   the logo gradient so they stay legible whatever the theme's accent is. */
+
+:root {
+  --swoop-violet: #7c6cf0;
+  --swoop-indigo: #3a52d6;
+}
+
+/* Primary actions: logo gradient with white text, pill shaped. */
+button.swoop-accent {
+  background-image: linear-gradient(135deg, var(--swoop-violet), var(--swoop-indigo));
+  color: white;
+  border-radius: 999px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px alpha(#3a52d6, 0.35);
+}
+
+button.swoop-accent:hover {
+  filter: brightness(1.08);
+}
+
+button.swoop-accent:active {
+  filter: brightness(0.92);
+}
+
+button.swoop-accent:disabled {
+  filter: saturate(0.4);
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+window.swoop {
+  background-color: var(--window-bg-color);
+}
+
+/* Large title area with the logo, like an iOS navigation bar. */
+.swoop-hero {
+  padding: 18px 4px 6px 4px;
+}
+
+.swoop-hero .swoop-wordmark {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.swoop-hero .swoop-tagline {
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.swoop-logo {
+  -gtk-icon-shadow: 0 6px 14px alpha(var(--swoop-indigo), 0.35);
+}
+
+/* Inset grouped lists with generous radii. */
+window.swoop .boxed-list,
+window.swoop .card {
+  border-radius: 20px;
+  box-shadow: 0 1px 2px alpha(black, 0.06), 0 8px 24px alpha(black, 0.06);
+}
+
+window.swoop .boxed-list > row:first-child {
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+}
+
+window.swoop .boxed-list > row:last-child {
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+}
+
+window.swoop preferencesgroup > box > box.header .heading {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+}
+
+.download-row .download-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Speed card: big counter on top, graph bleeding to the rounded edges. */
+.swoop-speed-card {
+  padding-top: 16px;
+}
+
+.swoop-speed-card > label {
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.swoop-speed-card .title-1 {
+  font-size: 34px;
+  font-weight: 800;
+  font-feature-settings: "tnum";
+}
+
+/* Pill progress bars with the logo gradient. */
+.download-row progressbar > trough {
+  min-height: 8px;
+  border-radius: 999px;
+}
+
+.download-row progressbar > trough > progress {
+  min-height: 8px;
+  border-radius: 999px;
+  background-image: linear-gradient(90deg, var(--swoop-violet), var(--swoop-indigo));
+}
+
+.download-row progressbar.paused > trough > progress {
+  background-image: linear-gradient(90deg, alpha(#7c6cf0, 0.45), alpha(#3a52d6, 0.45));
+}
+
+.download-row progressbar.error > trough > progress {
+  background-image: none;
+  background-color: #e5484d;
+}
+
+/* Round, tinted action buttons. */
+.download-row button.circular {
+  min-width: 34px;
+  min-height: 34px;
+  background-color: alpha(currentColor, 0.07);
+}
+
+.download-row button.circular:hover {
+  background-color: alpha(currentColor, 0.12);
+}
+
+.download-row button.destructive-hover:hover {
+  color: var(--destructive-color);
+}
+
+button.swoop-add {
+  padding: 4px 16px;
+}
+
+toast {
+  border-radius: 999px;
+}
+
+/* Setup guide: large, soft sheet. */
+dialog.swoop-guide sheet {
+  border-radius: 28px;
+}
+
+/* Switches use the brand gradient when on, whatever the theme's accent is. */
+window.swoop switch:checked,
+dialog.swoop-guide switch:checked {
+  background-image: linear-gradient(135deg, #7c6cf0, #3a52d6);
+}
