@@ -35,8 +35,14 @@ class Aria2Settings:
 
     download_dir: Path
     executable: str = "aria2c"
+    connections_per_download: int = 8
     startup_timeout: float = 10.0
     shutdown_timeout: float = 10.0
+
+    def __post_init__(self) -> None:
+        # aria2c refuses to start when max-connection-per-server is outside 1..16.
+        if not 1 <= self.connections_per_download <= 16:
+            raise ValueError("connections_per_download must be between 1 and 16")
 
 
 def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[str]:
@@ -48,6 +54,10 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
         "--rpc-listen-all=false",
         f"--rpc-listen-port={port}",
         f"--dir={settings.download_dir}",
+        f"--split={settings.connections_per_download}",
+        f"--max-connection-per-server={settings.connections_per_download}",
+        "--min-split-size=1M",
+        "--continue=true",
         f"--stop-with-process={os.getpid()}",
         "--quiet=true",
     ]

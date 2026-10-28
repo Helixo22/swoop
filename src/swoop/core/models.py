@@ -1,0 +1,78 @@
+"""Typed view of aria2 download status.
+
+Converts the string-valued dictionaries returned by aria2.tellStatus into
+immutable dataclasses used by the rest of the application.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import PurePosixPath
+from typing import Any
+
+from swoop.aria2.rpc import Aria2Error
+
+STATUS_KEYS = (
+    "gid",
+    "status",
+    "totalLength",
+    "completedLength",
+    "downloadSpeed",
+    "connections",
+    "dir",
+    "files",
+    "errorMessage",
+)
+
+
+class DownloadStatus(StrEnum):
+    ACTIVE = "active"
+    WAITING = "waiting"
+    PAUSED = "paused"
+    ERROR = "error"
+    COMPLETE = "complete"
+    REMOVED = "removed"
+
+
+@dataclass(frozen=True)
+class Download:
+    gid: str
+    status: DownloadStatus
+    total_length: int
+    completed_length: int
+    download_speed: int
+    connections: int
+    directory: str
+    paths: tuple[str, ...]
+    error_message: str
+
+    @classmethod
+    def from_status(cls, status: Any) -> Download:
+        """Build from an aria2.tellStatus result; raise Aria2Error if it is malformed."""
+        try:
+            return cls._parse(status)
+        except (AttributeError, KeyError, TypeError, ValueError) as exc:
+            raise Aria2Error("malformed aria2.tellStatus result") from exc
+
+    @classmethod
+    def _parse(cls, status: dict[str, Any]) -> Download:
+        return cls(
+            gid=status["gid"],
+            status=DownloadStatus(status["status"]),
+            total_length=int(status.get("totalLength", 0)),
+            completed_length=int(status.get("completedLength", 0)),
+            download_speed=int(status.get("downloadSpeed", 0)),
+            connections=int(status.get("connections", 0)),
+            directory=status.get("dir", ""),
+            paths=tuple(file["path"] for file in status.get("files", []) if file.get("path")),
+            error_message=status.get("errorMessage", ""),
+        )
+
+    @property
+    def name(self) -> str:
+        return PurePosixPath(self.paths[0]).name if self.paths else ""
+
+    @property
+    def progress(self) -> float:
+        return self.completed_length / self.total_length if self.total_length else 0.0
