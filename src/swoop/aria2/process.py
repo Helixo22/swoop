@@ -2,6 +2,7 @@
 
 Starts aria2c with RPC bound to localhost and a fresh random secret, waits for
 the endpoint to answer, restarts it after crashes and shuts it down cleanly.
+Queue limits are aria2 global options and are kept across restarts.
 """
 
 from __future__ import annotations
@@ -12,7 +13,7 @@ import logging
 import os
 import secrets
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from swoop.aria2.rpc import Aria2Client, Aria2ConnectionError, Aria2Error
@@ -31,6 +32,26 @@ class Aria2StartError(Aria2Error):
 
 
 @dataclass(frozen=True)
+class QueueLimits:
+    """Queue limits enforced by aria2 itself."""
+
+    max_concurrent_downloads: int = 3
+    max_download_speed: int = 0  # bytes per second, 0 means unlimited
+
+    def __post_init__(self) -> None:
+        if self.max_concurrent_downloads < 1:
+            raise ValueError("max_concurrent_downloads must be at least 1")
+        if self.max_download_speed < 0:
+            raise ValueError("max_download_speed must not be negative")
+
+    def as_options(self) -> dict[str, str]:
+        return {
+            "max-concurrent-downloads": str(self.max_concurrent_downloads),
+            "max-overall-download-limit": str(self.max_download_speed),
+        }
+
+
+@dataclass(frozen=True)
 class Aria2Settings:
     """Static launch parameters of aria2c."""
 
@@ -38,6 +59,7 @@ class Aria2Settings:
     session_file: Path
     executable: str = "aria2c"
     connections_per_download: int = 8
+    limits: QueueLimits = field(default_factory=QueueLimits)
     startup_timeout: float = 10.0
     shutdown_timeout: float = 10.0
 
@@ -63,6 +85,7 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
         f"--max-connection-per-server={settings.connections_per_download}",
         "--min-split-size=1M",
         "--continue=true",
+        *(f"--{name}={value}" for name, value in settings.limits.as_options().items()),
         f"--stop-with-process={os.getpid()}",
         "--quiet=true",
     ]
@@ -87,6 +110,7 @@ class Aria2Process:
         self.client = Aria2Client(f"http://127.0.0.1:{self._port}/jsonrpc", self._secret)
         self._process: asyncio.subprocess.Process | None = None
         self._watchdog: asyncio.Task[None] | None = None
+        self._limits_lock = asyncio.Lock()
 
     @property
     def port(self) -> int:
@@ -95,6 +119,15 @@ class Aria2Process:
     @property
     def pid(self) -> int | None:
         return self._process.pid if self._process else None
+
+    async def apply_limits(self, limits: QueueLimits) -> None:
+        """Change queue limits at runtime; later restarts launch aria2c with them too."""
+        # Serialized so overlapping calls cannot reach aria2 out of order and leave it
+        # with other limits than the stored ones.
+        async with self._limits_lock:
+            # Stored first so that a restart racing with this call still picks them up.
+            self._settings = replace(self._settings, limits=limits)
+            await self.client.call("aria2.changeGlobalOption", limits.as_options())
 
     async def start(self) -> None:
         """Launch aria2c and keep it alive until stop() is called."""
