@@ -90,6 +90,7 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
         f"--max-connection-per-server={settings.connections_per_download}",
         "--min-split-size=1M",
         "--continue=true",
+        "--bt-save-metadata=true",  # magnets resume from the session without refetching
         *(f"--{name}={value}" for name, value in settings.limits.as_options().items()),
         f"--stop-with-process={os.getpid()}",
         "--quiet=true",

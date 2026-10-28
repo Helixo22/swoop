@@ -12,6 +12,7 @@ import asyncio
 import json
 import logging
 from collections.abc import Callable
+from pathlib import Path
 
 import gi
 
@@ -113,10 +114,19 @@ class Backend:
             gid = await manager.add(
                 args.url, directory=args.dir, filename=args.out, headers=headers
             )
-            command_line.print_literal(f"{gid}\n")
+            self._added(gid, args.present, command_line)
+        elif args.command == "add-torrent":
+            manager = (await self.service).manager
+            gid = await manager.add_torrent(Path(args.file), directory=args.dir)
+            self._added(gid, args.present, command_line)
         elif args.command == "list":
             for download in await (await self.service).manager.list_downloads():
                 command_line.print_literal(f"{download.gid}  {describe(download)}\n")
+
+    def _added(self, gid: str, present: bool, command_line: Gio.ApplicationCommandLine) -> None:
+        command_line.print_literal(f"{gid}\n")
+        if present:  # opened from the desktop (magnet link, .torrent file): show the window
+            self._app.activate()
 
 
 class HeadlessApplication(Gio.Application):

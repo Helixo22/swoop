@@ -9,6 +9,7 @@ const api = globalThis.browser ?? globalThis.chrome;
 const HOST = "io.github.swoop";
 const MENU_ID = "swoop-download";
 const SUPPORTED_URL = /^(https?|ftp):\/\//i;
+const MAGNET = /^magnet:\?/i;
 
 function basename(path) {
   return path ? path.split(/[\\/]/).pop() || undefined : undefined;
@@ -73,7 +74,8 @@ api.runtime.onInstalled.addListener(() => {
 });
 
 api.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== MENU_ID || !SUPPORTED_URL.test(info.linkUrl ?? "")) return;
+  const link = info.linkUrl ?? "";
+  if (info.menuItemId !== MENU_ID || !(SUPPORTED_URL.test(link) || MAGNET.test(link))) return;
   if (tab?.incognito) return; // private browsing data never leaves the browser
   // No cookies here: a link is often a redirector to another site.
   sendToSwoop(info.linkUrl, { referrer: info.pageUrl }).catch((error) =>

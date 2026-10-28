@@ -46,6 +46,7 @@ class SwoopService:
 
     def __init__(self, paths: AppPaths, allowed_root: Path | None = None) -> None:
         paths.create()
+        self.paths = paths
         self._config_file = paths.config_file
         self._default_download_dir = paths.download_dir
         self._preferences = load_preferences(paths.config_file)

@@ -18,9 +18,9 @@ from typing import Any, BinaryIO
 
 from swoop.validation import (
     ValidationError,
+    validate_download_uri,
     validate_filename,
     validate_headers,
-    validate_url,
 )
 
 log = logging.getLogger(__name__)
@@ -85,9 +85,9 @@ def parse_download(message: Any) -> LaunchRequest:
     options = [] if filename is None else [f"--out={validate_filename(filename)}"]
     headers = message.get("headers")
     if headers is None:
-        return LaunchRequest(["add", *options, "--", validate_url(url)])
+        return LaunchRequest(["add", *options, "--", validate_download_uri(url)])
     validate_headers(headers)
-    arguments = ["add", *options, "--headers-from-stdin", "--", validate_url(url)]
+    arguments = ["add", *options, "--headers-from-stdin", "--", validate_download_uri(url)]
     return LaunchRequest(arguments, json.dumps(headers).encode())
 
 

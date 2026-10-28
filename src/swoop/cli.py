@@ -13,8 +13,10 @@ from gi.events import GLibEventLoopPolicy
 from gi.repository import Gio
 
 from swoop.app import HeadlessApplication
-from swoop.browser_integration import install_host_manifests
+from swoop.browser_integration import export_extension, install_host_manifests
 from swoop.commands import CommandError, build_parser
+from swoop.desktop import current_executable, install_desktop_entry
+from swoop.paths import AppPaths
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,8 +28,16 @@ def main(argv: list[str] | None = None) -> int:
     except CommandError as exc:
         print(f"swoop: {exc}", file=sys.stderr)
         return 2
-    if args.command == "install-browser-host":
-        for path in install_host_manifests():
+    if args.command == "open":
+        argv = [argv[0], *_open_command(args.target)]
+    if args.command == "setup-browsers":
+        build = export_extension(AppPaths.from_environment().data_dir / "browser-extension")
+        for path in (*install_host_manifests(), build.firefox_package, build.chromium_dir):
+            print(path)
+        return 0
+    if args.command == "install-desktop":
+        data_home = AppPaths.from_environment().data_dir.parent
+        for path in install_desktop_entry(data_home, current_executable()):
             print(path)
         return 0
     # The stubs target Python 3.11, whose policy ABC still declares child watchers.
@@ -42,3 +52,15 @@ def _application() -> Gio.Application:
     except (ImportError, ValueError):  # ValueError: typelib missing for the required version
         return HeadlessApplication()
     return SwoopApplication() if display_available() else HeadlessApplication()
+
+
+def _open_command(target: str) -> list[str]:
+    """Turn a desktop "open" (link, magnet, file:// URI or path) into an add command.
+
+    Local paths are made absolute here, because the running instance may have
+    another working directory.
+    """
+    path = Gio.File.new_for_commandline_arg(target)
+    if path.is_native() and (local := path.get_path()):
+        return ["add-torrent", "--present", "--", local]
+    return ["add", "--present", "--", target]

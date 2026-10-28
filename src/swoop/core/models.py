@@ -23,6 +23,10 @@ STATUS_KEYS = (
     "dir",
     "files",
     "errorMessage",
+    "uploadSpeed",
+    "seeder",
+    "bittorrent",
+    "followedBy",
 )
 
 
@@ -47,6 +51,10 @@ class Download:
     paths: tuple[str, ...]
     url: str
     error_message: str
+    upload_speed: int = 0
+    seeder: bool = False  # a torrent that has all its data and is now uploading
+    torrent_name: str = ""
+    followed_by: tuple[str, ...] = ()  # e.g. a magnet's metadata, followed by the real torrent
 
     @classmethod
     def from_status(cls, status: Any) -> Download:
@@ -69,10 +77,16 @@ class Download:
             paths=tuple(file["path"] for file in status.get("files", []) if file.get("path")),
             url=_first_uri(status.get("files", [])),
             error_message=status.get("errorMessage", ""),
+            upload_speed=int(status.get("uploadSpeed", 0)),
+            seeder=status.get("seeder") == "true",
+            torrent_name=str(status.get("bittorrent", {}).get("info", {}).get("name", "")),
+            followed_by=tuple(status.get("followedBy", [])),
         )
 
     @property
     def name(self) -> str:
+        if self.torrent_name:
+            return self.torrent_name
         return PurePosixPath(self.paths[0]).name if self.paths else ""
 
     @property

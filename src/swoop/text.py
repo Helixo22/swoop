@@ -30,6 +30,8 @@ def remaining_time(remaining: int, bytes_per_second: int) -> str:
 
 
 def title(download: Download) -> str:
+    if download.name.startswith("[METADATA]"):  # aria2's name for a magnet's metadata
+        return "Fetching torrent metadata…"
     return download.name or download.url or download.gid
 
 
@@ -41,6 +43,8 @@ def progress(download: Download) -> str:
 def status_text(download: Download) -> str:
     """One line describing the state of an unfinished download."""
     match download.status:
+        case DownloadStatus.ACTIVE if download.seeder:
+            return f"Seeding · ↑ {speed(download.upload_speed)}"
         case DownloadStatus.ACTIVE:
             remaining = download.total_length - download.completed_length
             eta = remaining_time(remaining, download.download_speed)

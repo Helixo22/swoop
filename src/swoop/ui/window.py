@@ -12,21 +12,34 @@ import functools
 import logging
 import sqlite3
 from collections.abc import Awaitable
+from pathlib import Path
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
 from swoop.aria2.rpc import Aria2Error
-from swoop.browser_integration import install_host_manifests, installed_browsers
+from swoop.browser_integration import (
+    Browser,
+    export_extension,
+    install_host_manifests,
+    installed_browsers,
+    open_extension_installer,
+)
 from swoop.config import Preferences
 from swoop.core.history import HistoryEntry
 from swoop.core.models import Download, DownloadStatus
 from swoop.core.service import Snapshot, SwoopService
+from swoop.desktop import (
+    current_executable,
+    in_flatpak,
+    install_desktop_entry,
+    open_magnets_with_swoop,
+)
 from swoop.paths import APP_ID
 from swoop.ui.dialogs import present_add_dialog, present_preferences
 from swoop.ui.download_row import RUNNING, DownloadRow, completed_row, set_label
 from swoop.ui.setup_guide import SetupChoices, SetupGuide
 from swoop.ui.speed_graph import SpeedGraph, SpeedLabel
-from swoop.validation import ValidationError, validate_url
+from swoop.validation import ValidationError, validate_download_uri
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +64,7 @@ class SwoopWindow(Adw.ApplicationWindow):
         add_button.add_css_class("swoop-add")
         set_label(add_button, "Add Download")
         menu = Gio.Menu()
+        menu.append("Open Torrent File…", "win.open-torrent")
         menu.append("Preferences", "app.preferences")
         menu.append("Setup Guide", "app.setup")
         menu.append("About Swoop", "app.about")
@@ -108,6 +122,10 @@ class SwoopWindow(Adw.ApplicationWindow):
         self._add_action.connect("activate", lambda *_: self.run(self._open_add_dialog()))
         self.add_action(self._add_action)
         application.set_accels_for_action("win.add", ["<Control>n"])
+        self._open_torrent = Gio.SimpleAction(name="open-torrent", enabled=False)
+        self._open_torrent.connect("activate", lambda *_: self.run(self._choose_torrent()))
+        self.add_action(self._open_torrent)
+        application.set_accels_for_action("win.open-torrent", ["<Control>o"])
 
     def _hero(self) -> Gtk.Widget:
         logo = Gtk.Image(icon_name=APP_ID, pixel_size=64)
@@ -145,6 +163,7 @@ class SwoopWindow(Adw.ApplicationWindow):
             self.set_hide_on_close(False)  # nothing runs in the background: closing exits
             return
         self._add_action.set_enabled(True)
+        self._open_torrent.set_enabled(True)
         unsubscribe = self._service.subscribe(self.show_snapshot)
         self.connect("destroy", lambda _: unsubscribe())
         self.run(self._service.refresh())
@@ -177,8 +196,10 @@ class SwoopWindow(Adw.ApplicationWindow):
                 download_dir=self._service.download_dir,
                 limits=self._service.preferences.limits,
                 browsers=installed_browsers(),
+                desktop_integration=not in_flatpak(),
                 run=self.run,
                 on_finish=lambda choices: self.run(self._apply_setup(choices)),
+                on_install_extension=lambda browser: self.run(self._install_extension(browser)),
             ).present(self)
 
     def run(self, awaitable: Awaitable[object]) -> None:
@@ -233,7 +254,18 @@ class SwoopWindow(Adw.ApplicationWindow):
         )
         if choices.connect_browsers:
             install_host_manifests()
+        if choices.desktop_integration:
+            install_desktop_entry(self._service.paths.data_dir.parent, current_executable())
+            open_magnets_with_swoop()
         self._toasts.add_toast(Adw.Toast(title="Swoop is ready"))
+
+    async def _install_extension(self, browser: Browser) -> None:
+        assert self._service is not None
+        build = export_extension(self._service.paths.data_dir / "browser-extension")
+        open_extension_installer(browser, build)
+        if not browser.firefox:  # "Load unpacked" needs the folder: show it
+            folder = Gtk.FileLauncher(file=Gio.File.new_for_path(str(build.chromium_dir)))
+            await folder.launch(self)
 
     def _open_folder(self, path: str) -> None:
         launcher = Gtk.FileLauncher(file=Gio.File.new_for_path(path))
@@ -242,10 +274,23 @@ class SwoopWindow(Adw.ApplicationWindow):
     async def _open_add_dialog(self) -> None:
         present_add_dialog(self, await self._url_from_clipboard(), self._add)
 
+    async def _choose_torrent(self) -> None:
+        torrents = Gtk.FileFilter(name="Torrent files", mime_types=["application/x-bittorrent"])
+        torrents.add_suffix("torrent")
+        filters = Gio.ListStore(item_type=Gtk.FileFilter)
+        filters.append(torrents)
+        dialog = Gtk.FileDialog(title="Open Torrent File", filters=filters, default_filter=torrents)
+        try:
+            chosen = await dialog.open(self)
+        except GLib.Error:  # dismissed by the user
+            return
+        if self._service is not None and chosen is not None and (path := chosen.get_path()):
+            await self._then_refresh(self._service.manager.add_torrent(Path(path)))
+
     async def _url_from_clipboard(self) -> str:
         try:
             content = (await self.get_clipboard().read_text_async()) or ""
-            return validate_url(content.strip())
+            return validate_download_uri(content.strip())
         except (GLib.Error, ValidationError):
             return ""
 

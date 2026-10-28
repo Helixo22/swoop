@@ -1,32 +1,41 @@
 """Validation of untrusted input before it reaches aria2.
 
-Checks download URLs, request headers, output file names and destination
-directories so that only supported schemes are accepted, nothing can be injected
-into aria2 options and nothing escapes the allowed root.
+Checks download URLs, magnet links, torrent files, request headers, output
+file names and destination directories so that only supported schemes are
+accepted, nothing can be injected into aria2 options and nothing escapes the
+allowed root.
 """
 
 from __future__ import annotations
 
+import os
+import stat
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 ALLOWED_SCHEMES = frozenset({"http", "https", "ftp", "sftp"})
 MAX_URL_LENGTH = 8192
 MAX_FILENAME_BYTES = 255
 ALLOWED_HEADERS = frozenset({"Cookie", "Referer", "User-Agent"})
 MAX_HEADER_LENGTH = 16 * 1024
+MAX_TORRENT_SIZE = 10 * 1024 * 1024
+_MAGNET_TOPICS = ("urn:btih:", "urn:btmh:")  # BitTorrent v1 and v2 info hashes
 
 
 class ValidationError(ValueError):
     """Input rejected because it is malformed or unsafe."""
 
 
+def _check_text(uri: str) -> None:
+    if not uri or len(uri) > MAX_URL_LENGTH:
+        raise ValidationError("URL is empty or too long")
+    if any(char.isspace() or not char.isprintable() for char in uri):
+        raise ValidationError("URL contains whitespace or control characters")
+
+
 def validate_url(url: str) -> str:
     """Return url unchanged if it is a well-formed URL with a supported scheme."""
-    if not url or len(url) > MAX_URL_LENGTH:
-        raise ValidationError("URL is empty or too long")
-    if any(char.isspace() or not char.isprintable() for char in url):
-        raise ValidationError("URL contains whitespace or control characters")
+    _check_text(url)
     try:
         parts = urlsplit(url)
         has_host = bool(parts.hostname)
@@ -38,6 +47,41 @@ def validate_url(url: str) -> str:
     if not has_host:
         raise ValidationError("URL has no host")
     return url
+
+
+def validate_magnet(uri: str) -> str:
+    """Return uri unchanged if it is a magnet link carrying a BitTorrent info hash."""
+    _check_text(uri)
+    parts = urlsplit(uri)
+    if parts.scheme.lower() != "magnet":
+        raise ValidationError("not a magnet link")
+    topics = parse_qs(parts.query).get("xt", [])
+    if not any(topic.lower().startswith(_MAGNET_TOPICS) for topic in topics):
+        raise ValidationError("magnet link has no BitTorrent info hash")
+    return uri
+
+
+def validate_download_uri(uri: str) -> str:
+    """A URL with a supported scheme, or a BitTorrent magnet link."""
+    return validate_magnet(uri) if uri[:7].lower() == "magnet:" else validate_url(uri)
+
+
+def read_torrent_file(path: Path) -> bytes:
+    """Contents of a .torrent file, checked to be a reasonably sized bencoded dictionary."""
+    if not path.is_absolute():
+        raise ValidationError("torrent path must be absolute")
+    try:
+        # O_NONBLOCK: a FIFO planted at this path must not hang Swoop.
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        with os.fdopen(fd, "rb") as file:
+            if not stat.S_ISREG(os.fstat(file.fileno()).st_mode):
+                raise ValidationError("torrent path is not a regular file")
+            data = file.read(MAX_TORRENT_SIZE + 1)
+    except OSError as exc:
+        raise ValidationError(f"cannot read torrent file: {exc.strerror}") from exc
+    if len(data) > MAX_TORRENT_SIZE or not data.startswith(b"d"):
+        raise ValidationError("not a torrent file")
+    return data
 
 
 def validate_headers(headers: object) -> list[str]:

@@ -21,7 +21,7 @@ Run = Callable[[Awaitable[object]], None]
 def present_add_dialog(parent: Gtk.Widget, initial_url: str, on_add: Callable[[str], None]) -> None:
     entry = Gtk.Entry(
         text=initial_url,
-        placeholder_text="https://example.com/file.iso",
+        placeholder_text="https://… or magnet:?…",
         input_purpose=Gtk.InputPurpose.URL,
         activates_default=True,
     )

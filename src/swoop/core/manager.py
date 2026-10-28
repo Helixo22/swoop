@@ -6,6 +6,7 @@ pause, resume, removal) to aria2 and archives completed downloads in the history
 
 from __future__ import annotations
 
+import base64
 import contextlib
 from pathlib import Path
 
@@ -13,10 +14,11 @@ from swoop.aria2.rpc import Aria2Client, Aria2Error, Aria2RpcError
 from swoop.core.history import History
 from swoop.core.models import STATUS_KEYS, Download, DownloadStatus
 from swoop.validation import (
+    read_torrent_file,
     resolve_directory,
+    validate_download_uri,
     validate_filename,
     validate_headers,
-    validate_url,
 )
 
 # aria2 keeps at most this many stopped results by default (--max-download-result).
@@ -40,21 +42,28 @@ class DownloadManager:
         filename: str | None = None,
         headers: object = None,
     ) -> str:
-        """Queue url for download and return its aria2 GID.
+        """Queue a URL or magnet link for download and return its aria2 GID.
 
         headers (Cookie, Referer, User-Agent) apply to this download only.
         """
-        options: dict[str, str | list[str]] = {}
-        if directory is not None:
-            options["dir"] = str(resolve_directory(directory, self._allowed_root))
+        options = self._options(directory)
         if filename is not None:
             options["out"] = validate_filename(filename)
         if headers is not None:
             options["header"] = validate_headers(headers)
-        gid = await self._client.call("aria2.addUri", [validate_url(url)], options)
-        if not isinstance(gid, str):
-            raise Aria2Error("malformed aria2.addUri result")
-        return gid
+        uri = validate_download_uri(url)
+        return _gid(await self._client.call("aria2.addUri", [uri], options), "aria2.addUri")
+
+    async def add_torrent(self, path: Path, *, directory: str | Path | None = None) -> str:
+        """Queue the torrent described by the .torrent file at path."""
+        content = base64.b64encode(read_torrent_file(path)).decode()
+        result = await self._client.call("aria2.addTorrent", content, [], self._options(directory))
+        return _gid(result, "aria2.addTorrent")
+
+    def _options(self, directory: str | Path | None) -> dict[str, str | list[str]]:
+        if directory is None:
+            return {}
+        return {"dir": str(resolve_directory(directory, self._allowed_root))}
 
     async def pause(self, gid: str) -> None:
         await self._client.call("aria2.pause", gid)
@@ -86,7 +95,9 @@ class DownloadManager:
             raise Aria2Error("malformed aria2 download list")
         downloads = [Download.from_status(status) for result in results for status in result]
         for download in downloads:
-            if download.status is DownloadStatus.COMPLETE:
+            # A result followed by another download (magnet metadata, a fetched .torrent)
+            # is only a preparation step, not something the user downloaded.
+            if download.status is DownloadStatus.COMPLETE and not download.followed_by:
                 # Recorded first: if aria2 already dropped the result there is nothing to lose.
                 self._history.record(download)
             if download.status in _FINISHED:
@@ -97,3 +108,9 @@ class DownloadManager:
         """Drop a finished result so aria2 does not report it again."""
         with contextlib.suppress(Aria2RpcError):  # already dropped, e.g. by a concurrent refresh
             await self._client.call("aria2.removeDownloadResult", gid)
+
+
+def _gid(result: object, method: str) -> str:
+    if not isinstance(result, str):
+        raise Aria2Error(f"malformed {method} result")
+    return result

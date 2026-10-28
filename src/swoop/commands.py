@@ -32,7 +32,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="read request headers (JSON object: Cookie, Referer, User-Agent) from stdin",
     )
+    add.add_argument("--present", action="store_true", help=argparse.SUPPRESS)
+    torrent = commands.add_parser("add-torrent", help="queue the torrent in a .torrent file")
+    torrent.add_argument("file")
+    torrent.add_argument("--dir", help="destination directory (relative paths start at home)")
+    torrent.add_argument("--present", action="store_true", help=argparse.SUPPRESS)
+    opener = commands.add_parser("open", help="open a link, magnet or .torrent file")
+    opener.add_argument("target")
     commands.add_parser("list", help="show unfinished downloads")
     commands.add_parser("quit", help="stop the running Swoop instance")
-    commands.add_parser("install-browser-host", help="register the browser extension host")
+    commands.add_parser(
+        "setup-browsers", help="register the browser host and export the browser extension"
+    )
+    commands.add_parser("install-desktop", help="add Swoop and its icon to the app launcher")
     return parser
