@@ -63,6 +63,16 @@ a login work. aria2 cannot scope a header to one host: if the server redirects t
 another site, the cookies are sent there too. Links sent with "Download with Swoop" never carry
 cookies, since they are often redirectors.
 
+## Flatpak
+
+```sh
+flatpak-builder --user --install --force-clean build-dir packaging/flatpak/io.github.swoop.Swoop.yml
+flatpak run io.github.swoop.Swoop
+```
+
+The Flatpak bundles aria2 and installs its own launcher entry and icons. Browser integration
+needs the native host on the host system, so for now it works with the pip/uv installation.
+
 ## Development
 
 ```sh

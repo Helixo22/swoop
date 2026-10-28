@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata for Swoop, shown by software centres such as Flathub. -->
+<component type="desktop-application">
+  <id>io.github.swoop.Swoop</id>
+  <name>Swoop</name>
+  <summary>Download files faster with aria2</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.swoop">
+    <name>Swoop contributors</name>
+  </developer>
+  <description>
+    <p>
+      Swoop is a download manager for Linux. aria2 does the downloading, splitting each
+      file over several connections; Swoop adds a clean interface, a queue with speed
+      limits, browser integration and support for torrents and magnet links.
+    </p>
+    <ul>
+      <li>Segmented, resumable downloads that survive restarts</li>
+      <li>Live speed graph and per-download progress</li>
+      <li>Limits for simultaneous downloads and bandwidth</li>
+      <li>Torrents and magnet links</li>
+      <li>One-click setup on first launch</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.swoop.Swoop.desktop</launchable>
+  <url type="homepage">https://github.com/Helixo22/swoop</url>
+  <url type="bugtracker">https://github.com/Helixo22/swoop/issues</url>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.1.0" date="2026-10-28"/>
+  </releases>
+</component>
