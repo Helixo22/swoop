@@ -43,8 +43,8 @@ SIGNED_FIREFOX_PACKAGE = "swoop-firefox-signed.xpi"
 @dataclass(frozen=True)
 class Browser:
     name: str
-    roots: tuple[str, ...]  # possible configuration directories, relative to home
-    manifest_subdir: str  # where the host manifest goes inside a root
+    roots: tuple[str, ...]  # configuration directories that reveal the browser, relative to home
+    manifest_dirs: tuple[str, ...]  # where it looks for native messaging hosts, relative to home
     desktop_ids: tuple[str, ...]
     firefox: bool
     # A Flatpak browser cannot start programs outside its sandbox, so its
@@ -52,26 +52,37 @@ class Browser:
     sandboxed: bool = False
 
 
+# Firefox-based browsers read host manifests from ~/.mozilla/native-messaging-hosts even
+# when their profiles live elsewhere (verified with Zen 1.23, which ignores its own dirs).
+_MOZILLA_HOSTS = ".mozilla/native-messaging-hosts"
+
 BROWSERS = (
     Browser(
         "Firefox",
         # Firefox 147+ follows the XDG base directories; older releases use ~/.mozilla.
         (".config/mozilla", ".mozilla"),
-        "native-messaging-hosts",
+        (_MOZILLA_HOSTS, ".config/mozilla/native-messaging-hosts"),
         ("firefox.desktop", "firefox-esr.desktop", "firefox-developer-edition.desktop"),
         firefox=True,
     ),
     Browser(
         "Zen",
         (".config/zen", ".zen"),
-        "native-messaging-hosts",
+        (_MOZILLA_HOSTS,),
         ("zen.desktop", "zen-browser.desktop"),
+        firefox=True,
+    ),
+    Browser(
+        "LibreWolf",
+        (".librewolf", ".config/librewolf"),
+        (_MOZILLA_HOSTS, ".librewolf/native-messaging-hosts"),
+        ("librewolf.desktop", "io.gitlab.librewolf-community.desktop"),
         firefox=True,
     ),
     Browser(
         "Zen (Flatpak)",
         (".var/app/app.zen_browser.zen/.zen",),
-        "native-messaging-hosts",
+        (),
         ("app.zen_browser.zen.desktop",),
         firefox=True,
         sandboxed=True,
@@ -79,29 +90,22 @@ BROWSERS = (
     Browser(
         "Firefox (Flatpak)",
         (".var/app/org.mozilla.firefox/.mozilla",),
-        "native-messaging-hosts",
+        (),
         ("org.mozilla.firefox.desktop",),
         firefox=True,
         sandboxed=True,
     ),
     Browser(
-        "LibreWolf",
-        (".librewolf", ".config/librewolf"),
-        "native-messaging-hosts",
-        ("librewolf.desktop", "io.gitlab.librewolf-community.desktop"),
-        firefox=True,
-    ),
-    Browser(
         "Chromium",
         (".config/chromium",),
-        "NativeMessagingHosts",
+        (".config/chromium/NativeMessagingHosts",),
         ("chromium.desktop", "chromium-browser.desktop"),
         firefox=False,
     ),
     Browser(
         "Google Chrome",
         (".config/google-chrome",),
-        "NativeMessagingHosts",
+        (".config/google-chrome/NativeMessagingHosts",),
         ("google-chrome.desktop", "google-chrome-stable.desktop"),
         firefox=False,
     ),
@@ -119,16 +123,16 @@ class ExtensionBuild:
 def installed_browsers(home: Path | None = None) -> list[Browser]:
     """The supported browsers that have a configuration directory in the home directory."""
     home = home or Path.home()
-    return [browser for browser in BROWSERS if _existing_roots(browser, home) and _present(browser)]
+    return [browser for browser in BROWSERS if _has_root(browser, home) and _present(browser)]
+
+
+def _has_root(browser: Browser, home: Path) -> bool:
+    return any((home / root).is_dir() for root in browser.roots)
 
 
 def _present(browser: Browser) -> bool:
     """A Flatpak keeps its data after uninstalling, so also require the app itself."""
     return not browser.sandboxed or any(map(desktop_app, browser.desktop_ids))
-
-
-def _existing_roots(browser: Browser, home: Path) -> list[Path]:
-    return [home / root for root in browser.roots if (home / root).is_dir()]
 
 
 def host_manifest(host_path: Path, *, firefox: bool) -> dict[str, Any]:
@@ -146,18 +150,18 @@ def host_manifest(host_path: Path, *, firefox: bool) -> dict[str, Any]:
 
 
 def install_host_manifests(home: Path | None = None, host_path: Path | None = None) -> list[Path]:
-    """Write the manifests for every installed browser and return their paths."""
+    """Write the host manifest wherever an installed browser looks for it; return the paths."""
     home = home or Path.home()
     host_path = host_path or _find_host()
-    written = []
-    for browser in (browser for browser in BROWSERS if not browser.sandboxed):
-        manifest = json.dumps(host_manifest(host_path, firefox=browser.firefox), indent=2)
-        for root in _existing_roots(browser, home):
-            target = root / browser.manifest_subdir / f"{HOST_NAME}.json"
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(manifest + "\n")
-            written.append(target)
-    return written
+    targets = {
+        home / directory / f"{HOST_NAME}.json": browser.firefox
+        for browser in installed_browsers(home)
+        for directory in browser.manifest_dirs
+    }
+    for target, firefox in targets.items():
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(host_manifest(host_path, firefox=firefox), indent=2) + "\n")
+    return list(targets)
 
 
 def extension_manifest(firefox: bool) -> dict[str, Any]:
