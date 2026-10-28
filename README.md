@@ -21,7 +21,10 @@ swoop setup-browsers          # register the browser host and export the extensi
 swoop install-desktop         # add Swoop and its icon to the app launcher
 ```
 
-Commands sent while Swoop is running are forwarded to the running instance over D-Bus.
+Commands sent while Swoop is running are forwarded to the running instance over D-Bus;
+otherwise the command starts Swoop in the background first (`setup-browsers` and
+`install-desktop` always run on their own). `--dir` paths must stay inside your home directory;
+relative ones start there.
 Closing the window keeps downloads going; choose Quit (Ctrl+Q) to stop them. Without a display
 Swoop runs headless.
 
@@ -36,12 +39,21 @@ a share ratio of 1.0, aria2's default.
 
 ## Browser extension
 
-The setup guide installs it: Firefox opens its add-on installer on the generated package;
-Chromium-based browsers open their extensions page together with the folder to pick with
-"Load unpacked" (Developer mode). Release builds of Firefox only accept add-ons signed by
-Mozilla, so until the extension is published there, use Firefox Developer Edition/Nightly or
-load it temporarily from `about:debugging`. `swoop setup-browsers` exports the same builds to
-`~/.local/share/swoop/browser-extension`.
+The setup guide installs it in every detected browser (Firefox, Zen, LibreWolf, Chromium,
+Google Chrome):
+
+- Firefox-based browsers only install add-ons signed by Mozilla permanently. Until a signed
+  package is shipped (put it at `src/swoop/data/swoop-firefox-signed.xpi` and the Install button
+  uses it), Swoop opens `about:debugging`: choose "Load Temporary Add-on" and pick `manifest.json`
+  in the folder Swoop shows. The add-on then stays until the browser restarts. To sign it with
+  your own addons.mozilla.org account: `npx web-ext sign --channel=unlisted --source-dir
+  ~/.local/share/swoop/browser-extension/firefox --api-key=… --api-secret=…`.
+- Chromium-based browsers open their extensions page together with the folder to pick with
+  "Load unpacked" (Developer mode); this install is permanent.
+- Browsers installed as Flatpak are listed but cannot be connected: their sandbox does not let
+  an extension start programs outside it.
+
+`swoop setup-browsers` exports the same builds to `~/.local/share/swoop/browser-extension`.
 
 Downloads are handed to Swoop; if Swoop is not available the browser keeps them.
 Private-window downloads are never intercepted.

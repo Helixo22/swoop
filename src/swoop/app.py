@@ -76,11 +76,12 @@ class Backend:
             self._app.release()
 
     async def _start_service(self) -> SwoopService:
+        service = SwoopService(AppPaths.from_environment())
         try:
-            service = SwoopService(AppPaths.from_environment())
             await service.start()
         except Exception:
             log.exception("cannot start the Swoop backend")
+            await service.stop()  # close the RPC client and the history database
             self._release()
             raise
         return service

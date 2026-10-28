@@ -97,6 +97,10 @@ def build_arguments(settings: Aria2Settings, port: int, conf_fd: int) -> list[st
     ]
 
 
+def _rpc_url(port: int) -> str:
+    return f"http://127.0.0.1:{port}/jsonrpc"
+
+
 def find_free_port(port: int = 0) -> int:
     """Return port (or a random free one for 0); raise OSError if it is taken."""
     with socket.socket() as sock:
@@ -113,7 +117,7 @@ class Aria2Process:
         self._settings = settings
         self._secret = secrets.token_urlsafe(32)
         self._port = find_free_port()
-        self.client = Aria2Client(f"http://127.0.0.1:{self._port}/jsonrpc", self._secret)
+        self.client = Aria2Client(_rpc_url(self._port), self._secret)
         self._process: asyncio.subprocess.Process | None = None
         self._watchdog: asyncio.Task[None] | None = None
         self._options_lock = asyncio.Lock()
@@ -162,8 +166,7 @@ class Aria2Process:
 
     async def _spawn(self) -> None:
         try:
-            # On restart the port may have been taken meanwhile: never send the token there.
-            find_free_port(self._port)
+            self._claim_port()
             self._process = await self._launch()
         except OSError as exc:
             raise Aria2StartError(f"cannot launch {self._settings.executable}: {exc}") from exc
@@ -172,6 +175,15 @@ class Aria2Process:
         except BaseException:
             await _kill(self._process)
             raise
+
+    def _claim_port(self) -> None:
+        """On restart the port may have been taken meanwhile: never send the token there."""
+        try:
+            find_free_port(self._port)
+        except OSError:
+            self._port = find_free_port()
+            self.client.set_url(_rpc_url(self._port))
+            log.warning("RPC port taken by another process, moving to %d", self._port)
 
     async def _launch(self) -> asyncio.subprocess.Process:
         _ensure_session_file(self._settings.session_file)

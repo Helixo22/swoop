@@ -44,7 +44,7 @@ Listener = Callable[[Snapshot], None]
 class SwoopService:
     """Starts and stops everything the frontends (GUI, CLI, browser) talk to."""
 
-    def __init__(self, paths: AppPaths, allowed_root: Path | None = None) -> None:
+    def __init__(self, paths: AppPaths) -> None:
         paths.create()
         self.paths = paths
         self._config_file = paths.config_file
@@ -58,9 +58,8 @@ class SwoopService:
             )
         )
         self._history = History(paths.history_db)
-        self.manager = DownloadManager(
-            self._aria2.client, allowed_root or Path.home(), self._history
-        )
+        # Destinations given with "swoop add --dir" must stay inside the home directory.
+        self.manager = DownloadManager(self._aria2.client, Path.home(), self._history)
         self._listeners: list[Listener] = []
         self._refresher: asyncio.Task[None] | None = None
 
@@ -88,9 +87,11 @@ class SwoopService:
         """Apply new preferences to aria2 now and remember them for the next start."""
         directory = preferences.download_dir or self._default_download_dir
         directory.mkdir(parents=True, exist_ok=True)
-        await self._aria2.reconfigure(limits=preferences.limits, download_dir=directory)
+        # Saved first: if aria2 is restarting, the RPC call fails but the restart
+        # already uses these values, so what the UI shows must match them.
         self._preferences = preferences
         save_preferences(self._config_file, preferences)
+        await self._aria2.reconfigure(limits=preferences.limits, download_dir=directory)
 
     def subscribe(self, listener: Listener) -> Callable[[], None]:
         """Call listener with every new snapshot; return a function that unsubscribes."""

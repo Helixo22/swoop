@@ -48,6 +48,10 @@ class Aria2Client:
         # trust_env=False keeps proxy settings from routing the token off localhost.
         self._http = httpx.AsyncClient(timeout=timeout, transport=transport, trust_env=False)
 
+    def set_url(self, url: str) -> None:
+        """Point at another endpoint, e.g. after aria2 moved to a new port."""
+        self._url = url
+
     def __repr__(self) -> str:
         return f"Aria2Client(url={self._url!r})"
 

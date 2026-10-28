@@ -70,7 +70,6 @@ class FolderRow(Adw.ActionRow):
     def __init__(self, folder: Path, run: Run) -> None:
         super().__init__(title="Download folder", subtitle=str(folder))
         self.folder = folder
-        self._run = run
         button = Gtk.Button(label="Choose…", valign=Gtk.Align.CENTER)
         button.connect("clicked", lambda _: run(self._choose()))
         self.add_prefix(Gtk.Image(icon_name="folder-download-symbolic"))
@@ -110,7 +109,9 @@ def present_preferences(
     dialog.add(page)
 
     def closed(_: Adw.Dialog) -> None:
-        updated = replace(preferences, limits=limit_rows.limits(), download_dir=folder_row.folder)
+        # An untouched folder row keeps following the default (XDG) download folder.
+        chosen = preferences.download_dir if folder_row.folder == folder else folder_row.folder
+        updated = replace(preferences, limits=limit_rows.limits(), download_dir=chosen)
         if updated != preferences:
             on_change(updated)
 

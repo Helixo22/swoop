@@ -112,7 +112,10 @@ def resolve_directory(requested: str | Path, root: Path) -> Path:
     """Resolve requested (absolute or relative to root) and ensure it stays inside root."""
     if _has_control_chars(str(requested)):
         raise ValidationError(f"invalid destination: {str(requested)!r}")
-    path = Path(requested).expanduser()
+    try:
+        path = Path(requested).expanduser()
+    except RuntimeError as exc:  # "~name" of an unknown user
+        raise ValidationError(f"invalid destination: {str(requested)!r}") from exc
     resolved = (root / path).resolve()  # an absolute path replaces root here
     if not resolved.is_relative_to(root.resolve()):
         raise ValidationError(f"destination {str(requested)!r} is outside {str(root)!r}")

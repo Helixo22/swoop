@@ -10,7 +10,7 @@ readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-# PyGObject (GLib/Gio, later GTK4 + libadwaita) comes from the system or the Flatpak runtime.
+# PyGObject (GLib/Gio, GTK 4, libadwaita) comes from the system.
 dependencies = ["httpx>=0.27"]
 
 [project.scripts]

@@ -15,7 +15,7 @@ from pathlib import Path
 from gi.repository import Adw, Gtk
 
 from swoop.aria2.process import QueueLimits
-from swoop.browser_integration import Browser
+from swoop.browser_integration import Browser, has_signed_firefox_package
 from swoop.paths import APP_ID
 from swoop.ui.dialogs import FolderRow, LimitRows, Run
 
@@ -54,9 +54,13 @@ def _group_page(title: str, description: str, *groups: Adw.PreferencesGroup) -> 
     return page
 
 
-def _extension_hint(browser: Browser) -> str:
+def _extension_hint(browser: Browser, signed: bool) -> str:
+    if browser.sandboxed:
+        return "Flatpak keeps this browser in a sandbox that cannot start Swoop; use a native build"
+    if browser.firefox and signed:
+        return f"{browser.name} asks you to confirm the add-on"
     if browser.firefox:
-        return "Firefox asks you to confirm the add-on"
+        return "Choose Load Temporary Add-on and pick manifest.json in the folder Swoop opens"
     return "Turn on Developer mode, choose Load unpacked and pick the folder Swoop opens"
 
 
@@ -173,12 +177,14 @@ class SetupGuide(Adw.Dialog):
     def _extension_page(self) -> Adw.NavigationPage:
         group = Adw.PreferencesGroup()
         for browser in self._browsers:
-            row = Adw.ActionRow(title=browser.name, subtitle=_extension_hint(browser))
+            hint = _extension_hint(browser, has_signed_firefox_package())
+            row = Adw.ActionRow(title=browser.name, subtitle=hint, subtitle_lines=2)
             row.add_prefix(Gtk.Image(icon_name="web-browser-symbolic"))
-            install = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
-            install.add_css_class("swoop-accent")
-            install.connect("clicked", lambda _, b=browser: self._on_install_extension(b))
-            row.add_suffix(install)
+            if not browser.sandboxed:
+                install = Gtk.Button(label="Install", valign=Gtk.Align.CENTER)
+                install.add_css_class("swoop-accent")
+                install.connect("clicked", lambda _, b=browser: self._on_install_extension(b))
+                row.add_suffix(install)
             group.add(row)
         help_group = Adw.PreferencesGroup()
         help_group.add(Gtk.LinkButton(uri=EXTENSION_HELP, label="More about the extension"))

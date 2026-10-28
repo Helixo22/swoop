@@ -1,7 +1,8 @@
 """Command line entry point of Swoop.
 
-Validates arguments locally, installs the browser host manifests, and forwards
-every other command to the running Swoop instance (Gio.Application over D-Bus).
+Validates arguments locally, runs the setup commands (browser host and extension,
+launcher entry) in place, and forwards every other command to the primary Swoop
+instance over D-Bus (Gio.Application), starting it first if needed.
 """
 
 from __future__ import annotations

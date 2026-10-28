@@ -14,7 +14,7 @@ button.swoop-accent {
   color: white;
   border-radius: 999px;
   font-weight: 700;
-  box-shadow: 0 4px 14px alpha(#3a52d6, 0.35);
+  box-shadow: 0 4px 14px alpha(var(--swoop-indigo), 0.35);
 }
 
 button.swoop-accent:hover {
@@ -114,7 +114,9 @@ window.swoop preferencesgroup > box > box.header .heading {
 }
 
 .download-row progressbar.paused > trough > progress {
-  background-image: linear-gradient(90deg, alpha(#7c6cf0, 0.45), alpha(#3a52d6, 0.45));
+  background-image: linear-gradient(
+    90deg, alpha(var(--swoop-violet), 0.45), alpha(var(--swoop-indigo), 0.45)
+  );
 }
 
 .download-row progressbar.error > trough > progress {
@@ -153,5 +155,5 @@ dialog.swoop-guide sheet {
 /* Switches use the brand gradient when on, whatever the theme's accent is. */
 window.swoop switch:checked,
 dialog.swoop-guide switch:checked {
-  background-image: linear-gradient(135deg, #7c6cf0, #3a52d6);
+  background-image: linear-gradient(135deg, var(--swoop-violet), var(--swoop-indigo));
 }

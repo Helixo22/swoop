@@ -23,6 +23,7 @@ from swoop.browser_integration import (
     install_host_manifests,
     installed_browsers,
     open_extension_installer,
+    unpacked_dir,
 )
 from swoop.config import Preferences
 from swoop.core.history import HistoryEntry
@@ -255,7 +256,9 @@ class SwoopWindow(Adw.ApplicationWindow):
         if choices.connect_browsers:
             install_host_manifests()
         if choices.desktop_integration:
-            install_desktop_entry(self._service.paths.data_dir.parent, current_executable())
+            # Off the GUI thread: it runs update-desktop-database and the icon cache tool.
+            data_home = self._service.paths.data_dir.parent
+            await asyncio.to_thread(install_desktop_entry, data_home, current_executable())
             open_magnets_with_swoop()
         self._toasts.add_toast(Adw.Toast(title="Swoop is ready"))
 
@@ -263,9 +266,8 @@ class SwoopWindow(Adw.ApplicationWindow):
         assert self._service is not None
         build = export_extension(self._service.paths.data_dir / "browser-extension")
         open_extension_installer(browser, build)
-        if not browser.firefox:  # "Load unpacked" needs the folder: show it
-            folder = Gtk.FileLauncher(file=Gio.File.new_for_path(str(build.chromium_dir)))
-            await folder.launch(self)
+        if folder := unpacked_dir(browser, build):  # the browser asks for it: show it
+            await Gtk.FileLauncher(file=Gio.File.new_for_path(str(folder))).launch(self)
 
     def _open_folder(self, path: str) -> None:
         launcher = Gtk.FileLauncher(file=Gio.File.new_for_path(path))

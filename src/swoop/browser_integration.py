@@ -34,6 +34,8 @@ CHROMIUM_PUBLIC_KEY = (
     "MSpLUFAxI9Wh4bZ1MZYDbAJFscOyVMGakwIDAQAB"
 )
 _PERMISSIONS = ["downloads", "nativeMessaging", "contextMenus"]
+# Drop a package signed on addons.mozilla.org here to make Firefox installs permanent.
+SIGNED_FIREFOX_PACKAGE = "swoop-firefox-signed.xpi"
 
 
 @dataclass(frozen=True)
@@ -43,6 +45,9 @@ class Browser:
     manifest_subdir: str  # where the host manifest goes inside a root
     desktop_ids: tuple[str, ...]
     firefox: bool
+    # A Flatpak browser cannot start programs outside its sandbox, so its
+    # extension could never reach swoop-native-host.
+    sandboxed: bool = False
 
 
 BROWSERS = (
@@ -52,6 +57,36 @@ BROWSERS = (
         (".config/mozilla", ".mozilla"),
         "native-messaging-hosts",
         ("firefox.desktop", "firefox-esr.desktop", "firefox-developer-edition.desktop"),
+        firefox=True,
+    ),
+    Browser(
+        "Zen",
+        (".config/zen", ".zen"),
+        "native-messaging-hosts",
+        ("zen.desktop", "zen-browser.desktop"),
+        firefox=True,
+    ),
+    Browser(
+        "Zen (Flatpak)",
+        (".var/app/app.zen_browser.zen/.zen",),
+        "native-messaging-hosts",
+        ("app.zen_browser.zen.desktop",),
+        firefox=True,
+        sandboxed=True,
+    ),
+    Browser(
+        "Firefox (Flatpak)",
+        (".var/app/org.mozilla.firefox/.mozilla",),
+        "native-messaging-hosts",
+        ("org.mozilla.firefox.desktop",),
+        firefox=True,
+        sandboxed=True,
+    ),
+    Browser(
+        "LibreWolf",
+        (".librewolf", ".config/librewolf"),
+        "native-messaging-hosts",
+        ("librewolf.desktop", "io.gitlab.librewolf-community.desktop"),
         firefox=True,
     ),
     Browser(
@@ -73,8 +108,10 @@ BROWSERS = (
 
 @dataclass(frozen=True)
 class ExtensionBuild:
-    firefox_package: Path  # .xpi, opened by Firefox's add-on installer
-    chromium_dir: Path  # unpacked extension for "Load unpacked"
+    firefox_package: Path  # .xpi for the add-on installer
+    firefox_signed: bool  # only a Mozilla-signed package installs permanently in Firefox
+    firefox_dir: Path  # unpacked, for about:debugging's "Load Temporary Add-on"
+    chromium_dir: Path  # unpacked, for "Load unpacked"
 
 
 def installed_browsers(home: Path | None = None) -> list[Browser]:
@@ -106,7 +143,7 @@ def install_host_manifests(home: Path | None = None, host_path: Path | None = No
     home = home or Path.home()
     host_path = host_path or _find_host()
     written = []
-    for browser in BROWSERS:
+    for browser in (browser for browser in BROWSERS if not browser.sandboxed):
         manifest = json.dumps(host_manifest(host_path, firefox=browser.firefox), indent=2)
         for root in _existing_roots(browser, home):
             target = root / browser.manifest_subdir / f"{HOST_NAME}.json"
@@ -154,21 +191,43 @@ def export_extension(target: Path) -> ExtensionBuild:
         manifest = json.dumps(extension_manifest(firefox), indent=2) + "\n"
         (directory / "manifest.json").write_text(manifest)
     package = target / "swoop-firefox.xpi"
-    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
-        for file in sorted(firefox_dir.rglob("*")):
-            archive.write(file, file.relative_to(firefox_dir))
-    return ExtensionBuild(package, chromium_dir)
+    signed = files("swoop") / "data" / SIGNED_FIREFOX_PACKAGE
+    if signed.is_file():
+        package.write_bytes(signed.read_bytes())
+    else:
+        with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as archive:
+            for file in sorted(firefox_dir.rglob("*")):
+                archive.write(file, file.relative_to(firefox_dir))
+    return ExtensionBuild(package, signed.is_file(), firefox_dir, chromium_dir)
 
 
 def open_extension_installer(browser: Browser, build: ExtensionBuild) -> None:
-    """Firefox opens its add-on installer on the package; Chromium its extensions page."""
+    """Open the browser where the extension gets installed.
+
+    A Mozilla-signed package goes to Firefox's add-on installer. Unsigned builds
+    are refused there ("not verified"), so Firefox-based browsers open
+    about:debugging to load the folder instead; Chromium opens its extensions page.
+    """
     app = next(filter(None, map(desktop_app, browser.desktop_ids)), None)
     if app is None:
         raise FileNotFoundError(f"{browser.name} is not installed as a desktop application")
-    if browser.firefox:
+    if browser.firefox and build.firefox_signed:
         app.launch([Gio.File.new_for_path(str(build.firefox_package))], None)
+    elif browser.firefox:
+        app.launch_uris(["about:debugging#/runtime/this-firefox"], None)
     else:
         app.launch_uris(["chrome://extensions"], None)
+
+
+def unpacked_dir(browser: Browser, build: ExtensionBuild) -> Path | None:
+    """The folder the user must pick in the browser, or None when nothing is to pick."""
+    if not browser.firefox:
+        return build.chromium_dir
+    return None if build.firefox_signed else build.firefox_dir
+
+
+def has_signed_firefox_package() -> bool:
+    return (files("swoop") / "data" / SIGNED_FIREFOX_PACKAGE).is_file()
 
 
 def _find_host() -> Path:
