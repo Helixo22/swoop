@@ -29,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"swoop: {exc}", file=sys.stderr)
         return 2
     if args.command == "open":
-        argv = [argv[0], *_open_command(args.target)]
+        argv = [argv[0], *(_open_command(args.target) if args.target else [])]
     if args.command == "setup-browsers":
         build = export_extension(AppPaths.from_environment().data_dir / "browser-extension")
         for path in (*install_host_manifests(), build.firefox_package, build.chromium_dir):

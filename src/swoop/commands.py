@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
     torrent.add_argument("--dir", help="destination directory (relative paths start at home)")
     torrent.add_argument("--present", action="store_true", help=argparse.SUPPRESS)
     opener = commands.add_parser("open", help="open a link, magnet or .torrent file")
-    opener.add_argument("target")
+    opener.add_argument("target", nargs="?")  # empty when started from the launcher
     commands.add_parser("list", help="show unfinished downloads")
     commands.add_parser("quit", help="stop the running Swoop instance")
     commands.add_parser(
